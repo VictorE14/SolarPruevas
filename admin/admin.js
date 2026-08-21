@@ -54,21 +54,40 @@ document.getElementById('logoutBtn')?.addEventListener('click', function() {
 });
 
 // ============================================================
-//  ADMIN - CARGAR DATOS
+//  ADMIN - CARGAR DATOS (CORREGIDO)
 // ============================================================
 
 async function loadTecnicos() {
     try {
-        if (!db.getUsuarios) {
-            console.warn('⚠️ db.getUsuarios no disponible, usando datos mock');
+        // Verificar que db existe y tiene la función
+        if (!db || typeof db.getUsuarios !== 'function') {
+            console.error('❌ db.getUsuarios no está disponible');
+            // Intentar recargar supabase.js
+            if (window.db) {
+                console.log('🔄 Intentando usar window.db directamente');
+                const data = await window.db.getUsuarios();
+                tecnicos = data.filter(u => u.rol !== 'admin');
+                console.log(`✅ ${tecnicos.length} técnicos cargados desde window.db`);
+                return tecnicos;
+            }
+            // Si aún no funciona, usar datos mock como fallback
+            console.warn('⚠️ Usando datos mock como fallback');
             return getMockTecnicos();
         }
+        
+        // Obtener datos reales de Supabase
         const data = await db.getUsuarios();
+        console.log('📊 Datos de usuarios desde Supabase:', data);
+        
+        // Filtrar solo técnicos (excluir admin)
         tecnicos = data.filter(u => u.rol !== 'admin');
-        console.log(`✅ ${tecnicos.length} técnicos cargados`);
+        console.log(`✅ ${tecnicos.length} técnicos cargados desde Supabase`);
+        console.log('📋 Lista de técnicos:', tecnicos.map(t => `- ${t.nombre} (${t.email})`).join('\n'));
+        
         return tecnicos;
     } catch (error) {
         console.error('❌ Error al cargar técnicos:', error);
+        console.warn('⚠️ Usando datos mock como fallback');
         return getMockTecnicos();
     }
 }
@@ -139,32 +158,57 @@ function renderAdminKPIs() {
     document.getElementById('sysTotalAlertas').value = '0';
 }
 
+// ============================================================
+//  ADMIN - RENDER TÉCNICOS (CON LOGS)
+// ============================================================
+
 function renderTecnicos() {
     const tbody = document.getElementById('tecnicosTableBody');
-    if (!tbody) return;
+    if (!tbody) {
+        console.error('❌ No se encontró el elemento tecnicosTableBody');
+        return;
+    }
+
+    console.log(`📋 Renderizando ${tecnicos.length} técnicos...`);
 
     if (tecnicos.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#64748b;padding:20px;">No hay técnicos registrados.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#64748b;padding:20px;">
+            No hay técnicos registrados. <br>
+            <small>Haz clic en "Recargar Técnicos" para actualizar.</small>
+        </td></tr>`;
         return;
     }
 
     tbody.innerHTML = tecnicos.map((t, i) => {
         const invCount = inversoresAdmin.filter(inv => inv.usuario_id === t.id).length;
+        const estadoColor = t.estado === 'activo' ? '#22c55e' : '#ef4444';
+        const estadoText = t.estado === 'activo' ? 'Activo' : 'Inactivo';
         return `
             <tr>
                 <td>${i + 1}</td>
                 <td><strong>${t.nombre}</strong></td>
                 <td>${t.email}</td>
                 <td><span class="brand-badge">${t.rol || 'tecnico'}</span></td>
-                <td>${getStatusBadge(t.estado || 'activo')}</td>
+                <td>
+                    <span style="display:inline-flex;align-items:center;gap:6px;">
+                        <span style="width:8px;height:8px;border-radius:50%;background:${estadoColor};display:inline-block;"></span>
+                        ${estadoText}
+                    </span>
+                </td>
                 <td>${invCount}</td>
                 <td>
-                    <button class="btn-outline" style="padding:4px 10px; font-size:12px;" onclick="editarTecnicoUI('${t.id}')"><i class="fas fa-edit"></i></button>
-                    <button class="btn-outline" style="padding:4px 10px; font-size:12px; color:var(--danger);" onclick="eliminarTecnicoUI('${t.id}')"><i class="fas fa-trash"></i></button>
+                    <button class="btn-outline" style="padding:4px 10px;font-size:12px;" onclick="editarTecnicoUI('${t.id}')">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn-outline" style="padding:4px 10px;font-size:12px;color:var(--danger);" onclick="eliminarTecnicoUI('${t.id}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
                 </td>
             </tr>
         `;
     }).join('');
+
+    console.log(`✅ ${tecnicos.length} técnicos renderizados en la tabla`);
 }
 
 // ============================================================
@@ -462,7 +506,7 @@ function abrirModalInverterAdmin(inversor = null) {
 }
 
 // ============================================================
-//  GUARDAR TÉCNICO
+//  GUARDAR TÉCNICO (CORREGIDO)
 // ============================================================
 
 document.getElementById('saveTecnico')?.addEventListener('click', async function() {
@@ -488,11 +532,13 @@ document.getElementById('saveTecnico')?.addEventListener('click', async function
 
     try {
         if (id) {
+            // Actualizar usuario existente
             const updates = { nombre, email, rol, estado };
             if (password) updates.password_hash = password;
             
             await db.updateUsuario(id, updates);
             
+            // Actualizar asignaciones de inversores
             for (const inv of inversoresAdmin) {
                 if (inversoresSeleccionados.includes(inv.id)) {
                     await db.updateInversor(inv.id, { usuario_id: id });
@@ -504,6 +550,7 @@ document.getElementById('saveTecnico')?.addEventListener('click', async function
             await db.registrarLog(usuarioAdmin?.id, usuarioAdmin?.nombre, 'Editó técnico', `${nombre} (${email})`);
             alert(`✅ Técnico "${nombre}" actualizado correctamente.`);
         } else {
+            // Crear nuevo usuario
             const newUser = await db.createUsuario({
                 nombre: nombre,
                 email: email,
@@ -512,6 +559,9 @@ document.getElementById('saveTecnico')?.addEventListener('click', async function
                 estado: estado
             });
             
+            console.log('✅ Nuevo usuario creado:', newUser);
+            
+            // Asignar inversores seleccionados
             for (const invId of inversoresSeleccionados) {
                 try {
                     await db.updateInversor(invId, { usuario_id: newUser.id });
@@ -524,23 +574,33 @@ document.getElementById('saveTecnico')?.addEventListener('click', async function
             alert(`✅ Técnico "${nombre}" agregado correctamente.`);
         }
         
+        // Cerrar modal
         document.getElementById('modalTecnico').classList.remove('open');
         
-        await loadTecnicos();
-        await loadAdminInversores();
+        // FORZAR RECARGA DE DATOS DESDE SUPABASE
+        console.log('🔄 Recargando datos desde Supabase...');
+        
+        // Recargar técnicos
+        const freshData = await db.getUsuarios();
+        tecnicos = freshData.filter(u => u.rol !== 'admin');
+        console.log(`✅ ${tecnicos.length} técnicos recargados`);
+        
+        // Recargar inversores
+        inversoresAdmin = await db.getAllInversores();
+        console.log(`✅ ${inversoresAdmin.length} inversores recargados`);
+        
+        // Renderizar todo
+        renderAdminKPIs();
         renderTecnicos();
         renderAdminInversores();
-        renderAdminKPIs();
         
-        console.log('✅ Técnico guardado correctamente');
+        console.log('✅ Todo actualizado correctamente');
         
     } catch (error) {
         console.error('❌ Error al guardar técnico:', error);
         
         if (error.code === '23505' || (error.message && error.message.includes('duplicate key'))) {
             alert(`⚠️ El email "${email}" ya está registrado. Usa otro email.`);
-        } else if (error.message && error.message.includes('uuid')) {
-            alert('⚠️ Error al asignar inversores. Intenta de nuevo.');
         } else {
             alert(`❌ Error al guardar: ${error.message || 'Error desconocido'}`);
         }
@@ -711,32 +771,120 @@ document.getElementById('menuToggle')?.addEventListener('click', function() {
 });
 
 // ============================================================
-//  INICIALIZACIÓN
+//  ADMIN - INICIALIZACIÓN (CORREGIDA - MUESTRA TODOS)
 // ============================================================
 
 async function initAdmin() {
     console.log('🚀 Panel de Administración iniciado');
+    console.log('🔍 Verificando db:', typeof db !== 'undefined' ? '✅ Disponible' : '❌ No disponible');
     
-    await loadTecnicos();
-    await loadAdminInversores();
-    
-    renderAdminKPIs();
-    renderTecnicos();
-    renderAdminInversores();
-    
-    console.log('✅ Panel de Administración listo');
-    console.log(`👥 ${tecnicos.length} técnicos cargados`);
-    console.log(`📊 ${inversoresAdmin.length} inversores cargados`);
+    try {
+        // 1. Verificar que la conexión a Supabase funciona
+        if (!db || typeof db.getUsuarios !== 'function') {
+            console.error('❌ db.getUsuarios no es una función');
+            if (window.db && typeof window.db.getUsuarios === 'function') {
+                console.log('🔄 Usando window.db en su lugar');
+                Object.assign(db, window.db);
+            } else {
+                throw new Error('Base de datos no disponible');
+            }
+        }
+        
+        // 2. Cargar TODOS los usuarios desde Supabase (SIN FILTRAR)
+        console.log('📥 Cargando usuarios desde Supabase...');
+        const data = await db.getUsuarios();
+        console.log('📊 TODOS LOS USUARIOS DE SUPABASE:', data);
+        
+        // 🔥 CORREGIDO: Mostrar TODOS los usuarios (admin, técnicos, etc.)
+        tecnicos = data; // ¡YA NO FILTRAMOS!
+        
+        console.log(`✅ ${tecnicos.length} usuarios cargados`);
+        console.log('📋 Lista de usuarios:', tecnicos.map(t => 
+            `- ${t.nombre} | ${t.email} | rol: "${t.rol || 'sin rol'}" | estado: ${t.estado}`
+        ).join('\n'));
+        
+        // 3. Cargar inversores
+        console.log('📥 Cargando inversores desde Supabase...');
+        const invData = await db.getAllInversores();
+        inversoresAdmin = invData;
+        console.log(`✅ ${inversoresAdmin.length} inversores cargados`);
+        
+        // 4. Renderizar todo
+        renderAdminKPIs();
+        renderTecnicos();
+        renderAdminInversores();
+        
+        console.log('✅ Panel de Administración listo - TODOS los usuarios visibles');
+        
+    } catch (error) {
+        console.error('❌ Error en initAdmin:', error);
+        console.log('🔄 Intentando recargar con datos mock...');
+        
+        // Usar datos mock como fallback
+        tecnicos = getMockTecnicos();
+        inversoresAdmin = getMockInversores();
+        
+        renderAdminKPIs();
+        renderTecnicos();
+        renderAdminInversores();
+        
+        alert('⚠️ Error al cargar datos desde Supabase. Mostrando datos de prueba.\nRevisa la consola para más detalles.');
+    }
 }
 
+
 // ============================================================
-//  VERIFICAR SESIÓN AL CARGAR
+//  VERIFICAR SESIÓN AL CARGAR (CON RECARGA AUTOMÁTICA)
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async function() {
     if (checkAdminSession()) {
         await initAdmin();
+        
+        // Si no hay técnicos, intentar recargar automáticamente después de 1 segundo
+        setTimeout(() => {
+            if (tecnicos.length === 0) {
+                console.log('⚠️ No hay técnicos, intentando recargar...');
+                refreshTecnicos();
+            }
+        }, 1000);
     }
 });
 
-console.log('✅ Panel de Administración cargado');
+// ============================================================
+// FUNCIÓN PRINCIPAL CORREGIDA - ¡Muestra TODOS los usuarios!
+// ============================================================
+
+window.refreshData = async function() {
+    console.log('🔄 Recargando usuarios desde Supabase...');
+    showToast('Actualizando datos...', 'info');
+
+    try {
+        // 1. Obtener TODOS los usuarios
+        const data = await db.getUsuarios();
+        console.log('📊 TODOS LOS USUARIOS DE SUPABASE:', data);
+
+        // 2. 🔥 FILTRO CORREGIDO - ¡MOSTRAR TODOS LOS USUARIOS!
+        //    Ya NO filtramos, mostramos TODOS (admin, técnicos, etc.)
+        tecnicos = data; // ¡TODOS los usuarios!
+
+        console.log(`✅ ${tecnicos.length} usuarios encontrados`);
+        console.log('📋 Lista de usuarios:', tecnicos.map(t => 
+            `- ${t.nombre} | ${t.email} | rol: "${t.rol || 'sin rol'}" | estado: ${t.estado}`
+        ).join('\n'));
+
+        // 3. Cargar inversores
+        const invData = await db.getAllInversores();
+        inversores = invData;
+        console.log(`✅ ${inversores.length} inversores cargados`);
+
+        // 4. Renderizar todo
+        renderAll();
+
+        showToast(`✅ ${tecnicos.length} usuarios y ${inversores.length} inversores cargados`, 'success');
+
+    } catch (error) {
+        console.error('❌ Error al recargar:', error);
+        showToast('Error al recargar datos', 'error');
+    }
+};
