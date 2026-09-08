@@ -646,7 +646,7 @@ function abrirModalInverterAdmin(inversor = null) {
 document.getElementById('saveTecnico')?.addEventListener('click', async function() {
     const id = document.getElementById('editTecnicoId').value;
     const nombre = document.getElementById('tecNombre').value.trim();
-    const email = document.getElementById('tecEmail').value.trim();
+    const email = document.getElementById('tecEmail').value.trim().toLowerCase();
     const password = document.getElementById('tecPassword').value.trim();
     const rol = document.getElementById('tecRol').value;
     const estado = document.getElementById('tecEstado').value;
