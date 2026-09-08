@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  CONEXIÓN A SUPABASE (CONFIGURACIÓN EXTERNA)
 // ============================================================
 
@@ -44,10 +44,12 @@
 
     async function getUsuarioByEmail(email) {
         const client = ensureClient();
+        const normalizedEmail = String(email || '').trim().toLowerCase();
+        if (!normalizedEmail) return null;
         const { data, error } = await client
             .from('usuarios')
             .select('*')
-            .eq('email', email)
+            .eq('email', normalizedEmail)
             .maybeSingle();
         if (error) throw error;
         return data;
@@ -55,12 +57,17 @@
 
     async function createUsuario(usuario) {
         const client = ensureClient();
+        const normalizedEmail = String(usuario.email || '').trim().toLowerCase();
+        const passwordHash = String(usuario.password_hash || '').trim();
+        if (!normalizedEmail || !passwordHash) {
+            throw new Error('El usuario debe incluir un email y una contraseña cifrada.');
+        }
         const { data, error } = await client
             .from('usuarios')
             .insert({
                 nombre: usuario.nombre,
-                email: usuario.email,
-                password_hash: usuario.password_hash,
+                email: normalizedEmail,
+                password_hash: passwordHash,
                 rol: usuario.rol || 'tecnico',
                 estado: usuario.estado || 'activo'
             })
@@ -75,9 +82,16 @@
 
     async function updateUsuario(id, updates) {
         const client = ensureClient();
+        const normalizedUpdates = { ...updates };
+        if (normalizedUpdates.email !== undefined) {
+            normalizedUpdates.email = String(normalizedUpdates.email).trim().toLowerCase();
+        }
+        if (normalizedUpdates.password_hash !== undefined && !String(normalizedUpdates.password_hash).trim()) {
+            throw new Error('La contraseña cifrada no puede estar vacía.');
+        }
         const { data, error } = await client
             .from('usuarios')
-            .update(updates)
+            .update(normalizedUpdates)
             .eq('id', id)
             .select()
             .single();
