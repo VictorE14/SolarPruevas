@@ -1,4 +1,0 @@
-project_id = "nojpqnclmhztwwwjqxeh"
-
-[functions.growatt-sync]
-verify_jwt = false
