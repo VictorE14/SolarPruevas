@@ -10,6 +10,7 @@ const db = window.db || {};
 let inverters = [];
 let dailyProductionByDate = {};
 let dailyProductionByInverter = new Map();
+let historicalReadingsByInverter = new Map();
 let inverterStoppedForDate = new Map();
 let inverterStoppedAt = new Map();
 let productionCacheDate = null;
@@ -206,6 +207,7 @@ async function loadInverters() {
 
                 if (typeof db.getLecturasByInversor === 'function') {
                     const lecturas = await db.getLecturasByInversor(inv.id, 500);
+                    historicalReadingsByInverter.set(inv.id, lecturas || []);
                     const latestReadingByDate = new Map();
                     (lecturas || []).forEach(lectura => {
                         if (!lectura.timestamp) return;
@@ -816,22 +818,106 @@ function updateDashboardCharts() {
     weeklyChartInstance.update('none');
 }
 
+function buildStatsProductionData(range = 'semana') {
+    const todayKey = getMexicoDateKey();
+    const dailyValues = new Map();
+    dailyProductionByInverter.forEach(readings => readings.forEach((energy, dateKey) => {
+        dailyValues.set(dateKey, (dailyValues.get(dateKey) || 0) + Number(energy || 0));
+    }));
+
+    if (range === 'hora') {
+        const hourly = Array(24).fill(0).map(() => ({ total: 0, count: 0 }));
+        historicalReadingsByInverter.forEach(readings => readings.forEach(reading => {
+            if (getMexicoDateKey(reading.timestamp) !== todayKey) return;
+            const hour = Number(new Intl.DateTimeFormat('en-US', {
+                timeZone: CRODE_TIME_ZONE, hour: '2-digit', hour12: false
+            }).format(new Date(reading.timestamp)));
+            if (hour >= 0 && hour < 24) {
+                hourly[hour].total += Number(reading.potencia_ac || 0);
+                hourly[hour].count += 1;
+            }
+        }));
+        return {
+            type: 'line', unit: 'kW',
+            labels: hourly.map((_, hour) => `${String(hour).padStart(2, '0')}:00`),
+            data: hourly.map(value => value.count ? Number((value.total / value.count).toFixed(2)) : 0)
+        };
+    }
+
+    if (range === 'mes') {
+        const currentYear = new Date().getFullYear();
+        const monthly = Array(12).fill(0);
+        dailyValues.forEach((energy, dateKey) => {
+            const date = new Date(`${dateKey}T00:00:00`);
+            if (date.getFullYear() === currentYear) monthly[date.getMonth()] += energy;
+        });
+        return {
+            type: 'bar', unit: 'kWh',
+            labels: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'],
+            data: monthly.map(value => Number(value.toFixed(1)))
+        };
+    }
+
+    if (range === 'anio') {
+        const currentYear = new Date().getFullYear();
+        const years = Array.from({ length: 5 }, (_, index) => currentYear - 4 + index);
+        const yearly = years.map(year => [...dailyValues.entries()]
+            .filter(([dateKey]) => new Date(`${dateKey}T00:00:00`).getFullYear() === year)
+            .reduce((sum, [, energy]) => sum + energy, 0));
+        return { type: 'bar', unit: 'kWh', labels: years.map(String), data: yearly.map(value => Number(value.toFixed(1))) };
+    }
+
+    const dates = [...dailyValues.keys()].sort().slice(-7);
+    return {
+        type: 'bar', unit: 'kWh',
+        labels: dates.map(dateKey => new Date(`${dateKey}T00:00:00`).toLocaleDateString('es-MX', { weekday: 'short', day: '2-digit' })),
+        data: dates.map(dateKey => Number(dailyValues.get(dateKey).toFixed(1)))
+    };
+}
+
+function getSelectedStatsRange() {
+    return document.querySelector('#statsRange .stats-period-btn.active')?.dataset.range || 'hora';
+}
+
+function updateStatsSummary(range = getSelectedStatsRange()) {
+    const production = buildStatsProductionData(range);
+    const dailyProduction = buildStatsProductionData('dia');
+    const totalEnergy = range === 'hora'
+        ? Number(dailyProduction.data.at(-1) || 0)
+        : production.data.reduce((sum, value) => sum + value, 0);
+    const averagePower = inverters.length
+        ? inverters.reduce((sum, inverter) => sum + Number(inverter.potencia || 0), 0) / inverters.length
+        : 0;
+    const totalElement = document.getElementById('statsTotalEnergy');
+    const averageElement = document.getElementById('statsAvgPower');
+    if (totalElement) totalElement.innerHTML = `${totalEnergy.toFixed(1)} <small>kWh</small>`;
+    if (averageElement) averageElement.innerHTML = `${averagePower.toFixed(1)} <small>kW</small>`;
+    return production;
+}
+
 function initStatsChart() {
     const canvas = document.getElementById('statsChart');
     if (!canvas) { console.error('❌ No se encontró statsChart'); return; }
     const ctx = canvas.getContext('2d');
     if (statsChartInstance) statsChartInstance.destroy();
+    const range = getSelectedStatsRange();
+    const production = updateStatsSummary(range);
     statsChartInstance = new Chart(ctx, {
-        type: 'line',
+        type: production.type,
         data: {
-            labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
+            labels: production.labels,
             datasets: [{
-                label: 'Producción (kWh)',
-                data: [25, 30, 28, 35, 42, 38, 45],
+                label: production.unit === 'kW' ? 'Potencia promedio (kW)' : 'Producción (kWh)',
+                data: production.data,
                 borderColor: '#3b82f6',
                 backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                tension: 0.4,
-                fill: true
+                borderWidth: 2,
+                borderRadius: production.type === 'bar' ? 6 : 0,
+                maxBarThickness: 34,
+                categoryPercentage: 0.62,
+                barPercentage: 0.58,
+                tension: 0.35,
+                fill: production.type === 'line'
             }]
         },
         options: {
@@ -842,6 +928,17 @@ function initStatsChart() {
         }
     });
 }
+
+document.querySelectorAll('#statsRange .stats-period-btn').forEach(button => {
+    button.addEventListener('click', () => {
+        document.querySelectorAll('#statsRange .stats-period-btn').forEach(item => {
+            const selected = item === button;
+            item.classList.toggle('active', selected);
+            item.setAttribute('aria-selected', String(selected));
+        });
+        initStatsChart();
+    });
+});
 
 // ============================================================
 //  MODAL AGREGAR INVERSOR
@@ -1133,6 +1230,9 @@ async function initDashboard() {
         renderDashboardTable();
         renderFullInverterTable();
         updateDashboardCharts();
+        if (document.getElementById('estadisticas')?.classList.contains('active')) {
+            initStatsChart();
+        }
     }, 10000);
     
     console.log('✅ Dashboard inicializado correctamente');

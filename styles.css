@@ -803,6 +803,41 @@ tr:last-child td {
     min-width: 130px;
 }
 
+.stats-period-selector {
+    display: inline-flex;
+    overflow: hidden;
+    border: 1px solid #dbe3ee;
+    border-radius: 999px;
+    background: #f8fafc;
+}
+
+.stats-period-btn {
+    min-width: 74px;
+    padding: 8px 16px;
+    border: 0;
+    border-right: 1px solid #dbe3ee;
+    background: transparent;
+    color: #475569;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.stats-period-btn:last-child {
+    border-right: 0;
+}
+
+.stats-period-btn:hover {
+    background: #eaf2ff;
+    color: var(--primary-light);
+}
+
+.stats-period-btn.active {
+    background: var(--primary-light);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.22);
+}
+
 /* ===== BUTTONS ===== */
 .btn-primary {
     background: var(--primary-light);
