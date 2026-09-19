@@ -924,7 +924,17 @@ function initStatsChart() {
             responsive: true,
             maintainAspectRatio: false,
             plugins: { legend: { position: 'top' } },
-            scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9' } } }
+            scales: {
+                x: {
+                    ticks: {
+                        autoSkip: true,
+                        maxTicksLimit: production.type === 'line' ? 8 : 12,
+                        maxRotation: production.type === 'line' ? 0 : 0,
+                        minRotation: 0
+                    }
+                },
+                y: { beginAtZero: true, grid: { color: '#f1f5f9' } }
+            }
         }
     });
 }

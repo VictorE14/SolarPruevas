@@ -1085,6 +1085,7 @@ footer {
     }
     table {
         font-size: 12px;
+        min-width: 640px;
     }
     th, td {
         padding: 6px 8px;
@@ -1129,6 +1130,30 @@ footer {
     }
     .login-box {
         padding: 28px 20px;
+    }
+
+    .stats-period-selector {
+        width: 100%;
+    }
+
+    .stats-period-btn {
+        flex: 1;
+        min-width: 0;
+        padding: 9px 8px;
+    }
+
+    #estadisticas .btn-primary {
+        width: 100%;
+        justify-content: center;
+    }
+
+    #estadisticas .chart-card {
+        height: 370px;
+        padding: 16px 12px 12px;
+    }
+
+    #estadisticas .chart-card canvas {
+        height: calc(100% - 50px) !important;
     }
 }
 
