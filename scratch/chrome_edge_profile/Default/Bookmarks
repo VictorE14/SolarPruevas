@@ -1,0 +1,139 @@
+{
+   "checksum": "4b3fa21d6a584d37b7a5791d22577b41",
+   "roots": {
+      "bookmark_bar": {
+         "children": [ {
+            "date_added": "13283984594000465",
+            "date_last_used": "0",
+            "guid": "346099f8-f494-43a2-b272-fbe156d428e0",
+            "id": "7",
+            "name": "YouTube",
+            "show_icon": false,
+            "source": "sync",
+            "type": "url",
+            "url": "https://youtube.com/",
+            "visit_count": 0
+         }, {
+            "date_added": "13278306362565236",
+            "date_last_used": "0",
+            "guid": "0e7a4a06-9a03-452c-980e-64153c8b9281",
+            "id": "8",
+            "name": "(2052) 10 Hours Relaxing Sleep Music with Rain Sounds - Meditation Music, Stress Relief, Relaxing Music - YouTube",
+            "show_icon": false,
+            "source": "sync",
+            "type": "url",
+            "url": "https://www.youtube.com/watch?v=hZL2O2UR6Pw",
+            "visit_count": 0
+         }, {
+            "date_added": "13278885560617746",
+            "date_last_used": "0",
+            "guid": "ffaa4cd6-cdb7-4fdc-8618-30b4c79a3fc8",
+            "id": "9",
+            "name": "Teoría Musical - YouTube",
+            "show_icon": false,
+            "source": "sync",
+            "type": "url",
+            "url": "https://www.youtube.com/playlist?list=PLefddJA-73Qo_4EmLN-UXT9289Kk2uVn7",
+            "visit_count": 0
+         }, {
+            "date_added": "13280596138902290",
+            "date_last_used": "0",
+            "guid": "30382e26-b965-4125-9d9f-a98e67fc073e",
+            "id": "10",
+            "name": "Como Tocar TODAS Las Escalas En TODAS Las Posiciones: TUTORIAL DEFINITIVO - YouTube",
+            "show_icon": false,
+            "source": "sync",
+            "type": "url",
+            "url": "https://www.youtube.com/watch?v=jY9LgspXzmo",
+            "visit_count": 0
+         }, {
+            "date_added": "13281157286933704",
+            "date_last_used": "0",
+            "guid": "e291316e-aa80-413b-8b86-c2a119975ab7",
+            "id": "11",
+            "name": "El Círculo de Quintas: Una explicación detallada | Versión 2.0 - YouTube",
+            "show_icon": false,
+            "source": "sync",
+            "type": "url",
+            "url": "https://www.youtube.com/watch?v=r0R6gMw2s44",
+            "visit_count": 0
+         }, {
+            "date_added": "13291607717746084",
+            "date_last_used": "0",
+            "guid": "aa2a1915-d9dc-4089-bd7a-f1176c40a8c0",
+            "id": "12",
+            "name": "(619) Curso completo de Cakewalk 2020 - [#38 Sonitus Fx] - YouTube",
+            "show_icon": false,
+            "source": "sync",
+            "type": "url",
+            "url": "https://www.youtube.com/watch?v=GhqGsEiaxxc",
+            "visit_count": 0
+         }, {
+            "date_added": "13312779655420706",
+            "date_last_used": "0",
+            "guid": "bb384c87-8ece-411f-ae14-fd539d072772",
+            "id": "13",
+            "name": "(1855) [1 hora] Música de oración I Océanos (donde los pies pueden fallar) I Cubierta de piano de Jerry Kim - YouTube",
+            "show_icon": false,
+            "source": "sync",
+            "type": "url",
+            "url": "https://www.youtube.com/watch?v=1d8jDEc_9eY&t=3021s",
+            "visit_count": 0
+         }, {
+            "date_added": "13313794979477507",
+            "date_last_used": "0",
+            "guid": "f3a6f187-f5f5-4781-92f0-d4dd2800df04",
+            "id": "14",
+            "name": "Curso | FI-AFSyP-001 | Cursos MOOC TecNM 2022",
+            "show_icon": false,
+            "source": "sync",
+            "type": "url",
+            "url": "https://mooc.tecnm.mx/courses/course-v1:TecNM+FI-AFSyP-001+2022-3/course/",
+            "visit_count": 0
+         } ],
+         "date_added": "13434696663936579",
+         "date_last_used": "0",
+         "date_modified": "13313794979477507",
+         "guid": "0bc5d13f-2cba-5d74-951f-3f233fe6c908",
+         "id": "1",
+         "name": "Barra de favoritos",
+         "source": "unknown",
+         "type": "folder"
+      },
+      "other": {
+         "children": [  ],
+         "date_added": "13434696663936579",
+         "date_last_used": "0",
+         "date_modified": "0",
+         "guid": "82b081ec-3dd3-529c-8475-ab6c344590dd",
+         "id": "2",
+         "name": "Otros favoritos",
+         "source": "unknown",
+         "type": "folder"
+      },
+      "synced": {
+         "children": [  ],
+         "date_added": "13434696663936579",
+         "date_last_used": "0",
+         "date_modified": "0",
+         "guid": "4cf2e351-0e85-532b-bb37-df045d8f8d0f",
+         "id": "3",
+         "name": "Favoritos móviles",
+         "source": "unknown",
+         "type": "folder"
+      },
+      "workspaces_v2": {
+         "children": [  ],
+         "date_added": "13434696663936579",
+         "date_last_used": "0",
+         "date_modified": "0",
+         "guid": "75aa6670-344f-549d-b742-660f029506ab",
+         "id": "5",
+         "name": "Áreas de trabajo",
+         "source": "unknown",
+         "type": "folder"
+      }
+   },
+   "sync_metadata": "CkEKHgiIgQISCJ6nl9GgAQAAKg4QABgBIAAoBTAAOABAABIAKhhIL0VSaDF0cmtYY1FlYVhCVEJDcVZBPT1IA6AGDBKMAQgDEocBChxuamdEdTg4ZUNydlhwODZwRDdmSEdjcUZwODg9EiRlZjJmMTIyOC0yMzZkLTVkOTYtODQ1OS1hN2UxYTk0NzBiMzUYACAAKAAw9Nif7OMwOPXbn+zjMED125/s4zBKHHl6TkIwMWNuNTRBN2NSVTB1VCsvUGdtVHRVbz1lAAAAAMI+AmAAEq0BCAoSqAEKHDAzdkRHdUNTQ01aNmxDZzUrYUpQN3NZQm5vZz0SJDMwMzgyZTI2LWI5NjUtNDEyNS05ZDlmLWE5OGU2N2ZjMDczZRgAIAAoADC98K/R0zI4usv+jecwQLrL/o3nMEocbXA0V0ZYMmI0OW83YlhsbUlQc2NUN2xYV2lNPVofIh3tUXMxbGNCOGluZlRYZFpRZjNJS1dBSmRuQXRrPWU4+Tkzwj4CYAUSjAEIBRKHAQocd1JCclpMKzZQQTlhdktnak5QN0pYRExjZnZzPRIkMGUwZWIxZWUtOTc3NS01ZjFlLWIwODMtOTUyMTUwZDYwM2FiGAAgACgAMN6xw6bMMzj1ssOmzDNA9bLDpswzShxubXg2NXNRRHZ4SThUZ0VlditBK250dG9TbjQ9ZQAAAADCPgJgABKtAQgOEqgBChw4UnppbThkQ3RUSWYzL3NLWWlMK2lpYkxaRDA9EiRmM2E2ZjE4Ny1mNWY1LTQ3ODEtOTJmMC1kNGRkMjgwMGRmMDQYACAAKAAwwfCv0dMyOObM/o3nMEDmzP6N5zBKHHRud0k5S1VMckRQcWlQQmJueTRzaVZxVXkvaz1aHyId/nQ1bmMvc0tKcExiZHpUSFNXKzV2S1JldVlRbz1lv+9LK8I+AmAFEq0BCAsSqAEKHGFoN253M1RXaGRYMERtZXhLcWRBVm9CVGY1Yz0SJGUyOTEzMTZlLWFhODAtNDEzYi04Yjg2LWMyYTExOTk3NWFiNxgAIAAoADDA8K/R0zI4t8z+jecwQLfM/o3nMEocQitDbzJ5RnlXeUd6UjhWY1JMQ0pWU0tNcjNzPVofIh32WmtVdEt4c09tMWpGcEhleDdHd3Bhc0ZqVlJnPWU4+Tkzwj4CYAUSrQEIDRKoAQocdThjS3M0QU1IdTkrYTRKQkF2M28xTkJrZUpvPRIkYmIzODRjODctOGVjZS00MTFmLWFlMTQtZmQ1MzlkMDcyNzcyGAAgACgAML7wr9HTMjjay/6N5zBA2sv+jecwShxmaTFITFNPMWVlcTBBVG5oVFRDNDk4bGpveG89Wh8iHf1oRkh0ekFhRDF6MWxvWXpUbGVuQURCUXVrS0k9ZTj5OTPCPgJgBRKtAQgMEqgBChxqaW5YM3J5V0FlY09ieGV0MmZaekNENVZuMFE9EiRhYTJhMTkxNS1kOWRjLTQwODktYmQ3YS1mMTE3NmM0MGE4YzAYACAAKAAwvPCv0dMyOJjM/o3nMECYzP6N5zBKHHZiODNMZXFHUkw1elF3dGEydFgwbUJoVnI0bz1aHyId+1czOEZHY0pmSVdTaEpkMWhlck5DeHJCTFArbz1lOPk5M8I+AmAFEowBCAEShwEKHHl4Si82ZnZrZWNyN2twNUVRekI0dFdMcGRiRT0SJDZiNTg0YzA3LWJlM2UtNTE5Mi1hYmU5LTY4NmFjZTAyZDZhYRgAIAAoADDu2J/s4zA4i9qf7OMwQIvan+zjMEocYVJDV0xnaEY5YjVJbnFLSUR2dUovanZRa0ZjPWUAAAAAwj4CYAASrQEICRKoAQocbC9ERk9DM2o5bG5ObVhrU3dMZ3hnZXNGNldnPRIkZmZhYTRjZDYtY2RiNy00ZmRjLTg2MTgtMzBiNGM3OWEzZmM4GAAgACgAML/wr9HTMjj5y/6N5zBA+cv+jecwShxTUlR6bXJob1oxMExJbldUU3h6MWF4NlcwTnM9Wh8iHdtLS3dObXd3bjZxOHZsYm5nakw1ZWdtSmQ2QUE9ZTj5OTPCPgJgBRKMAQgCEocBChxZY1NUb252RVNQd3FDczRMMmNyVmh2NjhMOTg9EiRjMmRlYWM4Yy03NjBjLTUyNzYtYjQwZC0zZTdiYjljMzNjYjgYACAAKAAw79if7OMwOLran+zjMEC62p/s4zBKHG9QVmtod0JSYlY2NUtDV1IyK0lPTkhXb091OD1lAAAAAMI+AmAAEq0BCAgSqAEKHFVrMTBubVdnRC92ekJTSS9NYjlMSUNQK1hZbz0SJDBlN2E0YTA2LTlhMDMtNDUyYy05ODBlLTY0MTUzYzhiOTI4MRgAIAAoADC78K/R0zI4m8v+jecwQJvL/o3nMEocQnJFL210WTNtdk5lZnZlY0YwdWFrZDFWQnJrPVofIh22RnN4NitxUU16TWJWSTQ1b1drVXFQNEVuWVlJPWU4+Tkzwj4CYAUSrAEIBxKnAQocR3B4Wldta0s5bGtMYWNVSUYyR0hTZHd6UzdvPRIkMzQ2MDk5ZjgtZjQ5NC00M2EyLWIyNzItZmJlMTU2ZDQyOGUwGAAgACgAMLrwr9HTMjj8yv6N5zBA/Mr+jecwShxNSFV0WFRQR2dSZkR3S2VZQ0lEd005bGVGbjA9Wh4iHG11Q0pXWVV4N1FmbVZJT01LSXBuREZGcXpLST1lOPk5M8I+AmAFMAA4AA==",
+   "version": 1
+}

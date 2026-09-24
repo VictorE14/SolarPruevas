@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+* { box-sizing: border-box; }
+.charts-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 380px;
+    border: 2px solid red;
+}
+.chart-card {
+    height: 325px;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    background: white;
+}
+.chart-scroll-container {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+.chart-inner-wrapper {
+    height: calc(100% - 10px);
+    min-width: 100%;
+    position: relative;
+}
+.chart-inner-wrapper canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+</style>
+</head>
+<body>
+<div class="charts-grid">
+    <div class="chart-card">
+        <h3>Title</h3>
+        <div class="chart-scroll-container">
+            <div class="chart-inner-wrapper" id="inverterChartWrapper">
+                <canvas id="inverterChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+window.onload = () => {
+    const wrapper = document.getElementById('inverterChartWrapper');
+    wrapper.style.width = '650px';
+
+    const canvas = document.getElementById('inverterChart');
+    const ctx = canvas.getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['NOTARIA 2...', 'Alejandra...', 'Adrian Ab...', 'Tulip 303...', 'COCINA NO...', 'La Juxoca...', 'Victor An...'],
+            datasets: [{ data: [120, 50, 20, 18, 16, 14, 8] }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+
+    window.TEST_RESULTS = {
+        gridClientWidth: document.querySelector('.charts-grid').clientWidth,
+        cardClientWidth: document.querySelector('.chart-card').clientWidth,
+        containerClientWidth: document.querySelector('.chart-scroll-container').clientWidth,
+        containerScrollWidth: document.querySelector('.chart-scroll-container').scrollWidth,
+        wrapperClientWidth: wrapper.clientWidth,
+        canvasClientWidth: canvas.clientWidth,
+        canvasWidthAttr: canvas.width
+    };
+    console.log('RESULTS:', JSON.stringify(window.TEST_RESULTS));
+};
+</script>
+</body>
+</html>

@@ -572,7 +572,9 @@ body {
     border-radius: 16px;
     box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
     position: relative;
-    height: 310px;
+    height: 325px;
+    display: flex;
+    flex-direction: column;
     transition: height 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
 }
 
@@ -587,7 +589,8 @@ body {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
+    flex-shrink: 0;
 }
 
 .chart-card h3 {
@@ -605,20 +608,21 @@ body {
 }
 
 .chart-scroll-container {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
     width: 100%;
-    height: calc(100% - 44px);
     overflow-x: auto;
     overflow-y: hidden;
     position: relative;
     -webkit-overflow-scrolling: touch;
-    touch-action: pan-x;
     overscroll-behavior-x: contain;
     scrollbar-width: thin;
     scrollbar-color: #94a3b8 #f1f5f9;
 }
 
 .chart-scroll-container::-webkit-scrollbar {
-    height: 6px;
+    height: 7px;
 }
 
 .chart-scroll-container::-webkit-scrollbar-track {
@@ -641,22 +645,24 @@ body {
 }
 
 .chart-inner-wrapper {
-    height: 100%;
+    height: calc(100% - 10px);
     min-width: 100%;
+    display: block;
     position: relative;
-    touch-action: pan-x;
 }
 
 .chart-inner-wrapper canvas {
+    width: 100% !important;
     height: 100% !important;
     max-height: 100%;
     display: block;
-    touch-action: pan-x;
 }
 
 .chart-card > canvas {
+    flex: 1;
+    min-height: 0;
     width: 100% !important;
-    height: calc(100% - 44px) !important;
+    height: 100% !important;
     max-height: 100%;
     display: block;
 }
@@ -1121,15 +1127,15 @@ footer {
         font-size: 20px;
     }
     .chart-card {
-        height: 290px;
-        padding: 12px 14px;
+        height: 330px;
+        padding: 14px 14px 10px;
     }
     .chart-card.chart-card-expandable.expanded {
-        height: 480px;
+        height: 500px;
     }
     .chart-card > canvas {
         max-height: none;
-        height: calc(100% - 44px) !important;
+        height: 100% !important;
     }
     .chart-inner-wrapper canvas {
         max-height: none;
@@ -1365,7 +1371,6 @@ body {
     color: #1e3a8a;
 }
 
-.chart-card,
 .table-card,
 .settings-card,
 .alerts-card {

@@ -649,15 +649,18 @@ function adjustInverterChartWidth(itemCount) {
     if (!wrapper || !container) return;
 
     const count = Math.max(1, Number(itemCount) || 0);
-    const minBarWidth = 85; // 85px por inversor para que la barra de 30px y el texto respiren holgadamente
-    const yAxisWidth = 55;  // Ancho reservado para las etiquetas del eje Y (0, 4, 8... kWh)
+    // 95px mínimo por cada inversor para que los nombres de 10 caracteres tengan al menos 25px de separación libre
+    const minBarWidth = 95;
+    const yAxisWidth = 60;
     const neededWidth = (count * minBarWidth) + yAxisWidth;
-    const containerWidth = container.clientWidth || 340;
+    const containerWidth = container.clientWidth || 320;
 
     if (neededWidth > containerWidth) {
         wrapper.style.width = `${neededWidth}px`;
+        wrapper.style.minWidth = `${neededWidth}px`;
     } else {
         wrapper.style.width = '100%';
+        wrapper.style.minWidth = '100%';
     }
 }
 
@@ -668,6 +671,7 @@ function enableDragToScroll(container) {
     let startX = 0;
     let scrollLeft = 0;
 
+    // Arrastre con Mouse (Escritorio / Laptop)
     container.addEventListener('mousedown', (e) => {
         isDown = true;
         container.classList.add('dragging');
@@ -682,6 +686,7 @@ function enableDragToScroll(container) {
     });
 
     container.addEventListener('mouseleave', () => {
+        if (!isDown) return;
         isDown = false;
         container.classList.remove('dragging');
     });
@@ -693,6 +698,41 @@ function enableDragToScroll(container) {
         const walk = (x - startX) * 1.5;
         container.scrollLeft = scrollLeft - walk;
     });
+
+    // Desplazamiento táctil (Celulares y Tablets)
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchScrollLeft = 0;
+    let isHorizontalGesture = false;
+
+    container.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchScrollLeft = container.scrollLeft;
+        isHorizontalGesture = false;
+    }, { passive: true });
+
+    container.addEventListener('touchmove', (e) => {
+        if (e.touches.length !== 1) return;
+        const currentX = e.touches[0].clientX;
+        const currentY = e.touches[0].clientY;
+        const deltaX = currentX - touchStartX;
+        const deltaY = currentY - touchStartY;
+
+        if (!isHorizontalGesture) {
+            if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 6) {
+                isHorizontalGesture = true;
+            }
+        }
+
+        if (isHorizontalGesture) {
+            container.scrollLeft = touchScrollLeft - deltaX;
+            if (e.cancelable) {
+                e.preventDefault();
+            }
+        }
+    }, { passive: false });
 }
 
 function initDashboardCharts() {
