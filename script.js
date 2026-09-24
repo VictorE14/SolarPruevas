@@ -648,16 +648,51 @@ function adjustInverterChartWidth(itemCount) {
     const container = wrapper ? wrapper.parentElement : null;
     if (!wrapper || !container) return;
 
-    const minBarWidth = 65; // Píxeles mínimos por inversor para que quepa la barra y etiqueta de 9 letras sin saltos
-    const containerWidth = container.clientWidth || 360;
     const count = Math.max(1, Number(itemCount) || 0);
-    const neededWidth = count * minBarWidth;
+    const minBarWidth = 85; // 85px por inversor para que la barra de 30px y el texto respiren holgadamente
+    const yAxisWidth = 55;  // Ancho reservado para las etiquetas del eje Y (0, 4, 8... kWh)
+    const neededWidth = (count * minBarWidth) + yAxisWidth;
+    const containerWidth = container.clientWidth || 340;
 
     if (neededWidth > containerWidth) {
         wrapper.style.width = `${neededWidth}px`;
     } else {
         wrapper.style.width = '100%';
     }
+}
+
+function enableDragToScroll(container) {
+    if (!container || container.dataset.dragEnabled) return;
+    container.dataset.dragEnabled = 'true';
+    let isDown = false;
+    let startX = 0;
+    let scrollLeft = 0;
+
+    container.addEventListener('mousedown', (e) => {
+        isDown = true;
+        container.classList.add('dragging');
+        startX = e.pageX - container.offsetLeft;
+        scrollLeft = container.scrollLeft;
+    });
+
+    window.addEventListener('mouseup', () => {
+        if (!isDown) return;
+        isDown = false;
+        container.classList.remove('dragging');
+    });
+
+    container.addEventListener('mouseleave', () => {
+        isDown = false;
+        container.classList.remove('dragging');
+    });
+
+    container.addEventListener('mousemove', (e) => {
+        if (!isDown) return;
+        e.preventDefault();
+        const x = e.pageX - container.offsetLeft;
+        const walk = (x - startX) * 1.5;
+        container.scrollLeft = scrollLeft - walk;
+    });
 }
 
 function initDashboardCharts() {
@@ -682,6 +717,7 @@ function initDashboardCharts() {
         const colors = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899'];
 
         adjustInverterChartWidth(sorted.length);
+        enableDragToScroll(document.querySelector('.chart-scroll-container'));
 
         inverterChartInstance = new Chart(ctx1, {
             type: 'bar',
@@ -704,7 +740,8 @@ function initDashboardCharts() {
                 responsive: true,
                 maintainAspectRatio: false,
                 animation: { duration: 250 },
-                layout: { padding: { top: 8, right: 10, left: 4, bottom: 0 } },
+                layout: { padding: { top: 8, right: 14, left: 4, bottom: 0 } },
+                events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchend'],
                 plugins: {
                     legend: { display: false },
                     tooltip: {
@@ -823,6 +860,7 @@ function updateDashboardCharts() {
     const inverterData = sorted.length ? sorted.map(inverter => Number(inverter.energiaHoy) || 0) : [0];
 
     adjustInverterChartWidth(sorted.length);
+    inverterChartInstance.resize();
 
     inverterChartInstance.data.labels = inverterLabels;
     inverterChartInstance.data.datasets[0].data = inverterData;

@@ -610,8 +610,11 @@ body {
     overflow-x: auto;
     overflow-y: hidden;
     position: relative;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
     scrollbar-width: thin;
-    scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+    scrollbar-color: #94a3b8 #f1f5f9;
 }
 
 .chart-scroll-container::-webkit-scrollbar {
@@ -619,28 +622,41 @@ body {
 }
 
 .chart-scroll-container::-webkit-scrollbar-track {
-    background: transparent;
+    background: #f1f5f9;
+    border-radius: 999px;
 }
 
 .chart-scroll-container::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.4);
+    background: #94a3b8;
     border-radius: 999px;
 }
 
 .chart-scroll-container::-webkit-scrollbar-thumb:hover {
-    background: rgba(100, 116, 139, 0.6);
+    background: #64748b;
+}
+
+.chart-scroll-container.dragging {
+    cursor: grabbing;
+    user-select: none;
 }
 
 .chart-inner-wrapper {
     height: 100%;
     min-width: 100%;
     position: relative;
+    touch-action: pan-x;
 }
 
-.chart-inner-wrapper canvas,
-.chart-card canvas {
-    width: 100% !important;
+.chart-inner-wrapper canvas {
     height: 100% !important;
+    max-height: 100%;
+    display: block;
+    touch-action: pan-x;
+}
+
+.chart-card > canvas {
+    width: 100% !important;
+    height: calc(100% - 44px) !important;
     max-height: 100%;
     display: block;
 }
@@ -1111,9 +1127,13 @@ footer {
     .chart-card.chart-card-expandable.expanded {
         height: 480px;
     }
-    .chart-card canvas {
+    .chart-card > canvas {
         max-height: none;
         height: calc(100% - 44px) !important;
+    }
+    .chart-inner-wrapper canvas {
+        max-height: none;
+        height: 100% !important;
     }
     .table-card {
         padding: 10px 12px;

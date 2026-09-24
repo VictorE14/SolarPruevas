@@ -166,6 +166,72 @@ Deno.serve(async (request) => {
 
   const admin = createClient(supabaseUrl, serviceRoleKey);
   const body = await request.json().catch(() => ({}));
+  const action = typeof body?.action === 'string' ? body.action.trim() : '';
+
+  if (action === 'get-plants') {
+    let token = toText(body?.apiToken);
+    if (!token) {
+      const { data: firstGrowatt } = await admin
+        .from('inversores')
+        .select('api_token')
+        .eq('marca', 'Growatt')
+        .not('api_token', 'is', null)
+        .limit(1)
+        .maybeSingle();
+      token = toText(firstGrowatt?.api_token);
+    }
+    if (!token) {
+      return response({ ok: false, error: 'Ingresa primero el Token API de Growatt' }, 400);
+    }
+    const baseUrl = body?.apiUrl?.startsWith('http') ? body.apiUrl : 'https://openapi.growatt.com';
+    try {
+      const plantsPayload = await growattRequest(baseUrl, 'plant/list', token, {
+        page: '1',
+        perpage: '100'
+      });
+      const rawPlants = Array.isArray(plantsPayload?.plants) ? plantsPayload.plants : [];
+      const plants = rawPlants.map((p: Record<string, unknown>) => ({
+        plant_id: String(p.plant_id ?? p.id ?? ''),
+        name: String(p.name ?? p.plant_name ?? ''),
+        city: String(p.city ?? '')
+      }));
+      return response({ ok: true, plants, tokenUsed: token });
+    } catch (err) {
+      return response({ ok: false, error: err instanceof Error ? err.message : String(err) }, 502);
+    }
+  }
+
+  if (action === 'get-devices') {
+    let token = toText(body?.apiToken);
+    const plantId = toText(body?.plantId);
+    if (!plantId) return response({ ok: false, error: 'plantId es requerido' }, 400);
+    if (!token) {
+      const { data: firstGrowatt } = await admin
+        .from('inversores')
+        .select('api_token')
+        .eq('marca', 'Growatt')
+        .not('api_token', 'is', null)
+        .limit(1)
+        .maybeSingle();
+      token = toText(firstGrowatt?.api_token);
+    }
+    if (!token) return response({ ok: false, error: 'Token API requerido' }, 400);
+    const baseUrl = body?.apiUrl?.startsWith('http') ? body.apiUrl : 'https://openapi.growatt.com';
+    try {
+      const devicesPayload = await growattRequest(baseUrl, 'device/list', token, { plant_id: plantId });
+      const rawDevices = Array.isArray(devicesPayload?.devices) ? devicesPayload.devices : [];
+      const devices = rawDevices.map((d: Record<string, unknown>) => ({
+        device_sn: String(d.device_sn ?? ''),
+        datalogger_sn: String(d.datalogger_sn ?? ''),
+        model: String(d.model ?? ''),
+        type: d.type
+      }));
+      return response({ ok: true, devices });
+    } catch (err) {
+      return response({ ok: false, error: err instanceof Error ? err.message : String(err) }, 502);
+    }
+  }
+
   const inverterId = typeof body?.inverterId === 'string' ? body.inverterId.trim() : '';
 
   if (!inverterId) {
@@ -242,9 +308,11 @@ Deno.serve(async (request) => {
         search_keyword: '',
       });
       const plants = Array.isArray(plantsPayload?.plants) ? plantsPayload.plants : [];
-      const matchingPlant = plants.find((plant: Record<string, unknown>) =>
-        normalized(plant.name ?? plant.plant_name) === normalized(inverter?.nombre)
-      );
+      const inverterNameNorm = normalized(inverter?.nombre);
+      const matchingPlant = plants.find((plant: Record<string, unknown>) => {
+        const pName = normalized(plant.name ?? plant.plant_name);
+        return pName === inverterNameNorm || pName.includes(inverterNameNorm) || inverterNameNorm.includes(pName);
+      });
       const resolvedId = matchingPlant
         ? String(matchingPlant.id ?? matchingPlant.plant_id ?? '')
         : '';
@@ -265,7 +333,7 @@ Deno.serve(async (request) => {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (!/plant.*does not exist/i.test(message)) throw error;
+      if (!/plant.*does not exist|error_permission_denied/i.test(message)) throw error;
       plantId = await findPlantId();
       plantData = await growattRequest(baseUrl, 'plant/data', token, { plant_id: plantId });
       plantPower = await growattRequest(baseUrl, 'plant/power', token, {

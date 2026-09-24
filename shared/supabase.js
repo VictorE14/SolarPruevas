@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  CONEXIÓN A SUPABASE (CONFIGURACIÓN EXTERNA)
 // ============================================================
 
@@ -354,6 +354,44 @@
         return data;
     }
 
+    async function getGrowattPlants(apiToken = '', apiUrl = '') {
+        const client = ensureClient();
+        const { data, error } = await client.functions.invoke('growatt-sync', {
+            body: { action: 'get-plants', apiToken: apiToken.trim(), apiUrl: apiUrl.trim() }
+        });
+        if (error) {
+            let detail = error.message || 'Error al consultar plantas de Growatt';
+            try {
+                const responseBody = error.context && typeof error.context.json === 'function'
+                    ? await error.context.json()
+                    : null;
+                if (responseBody?.error) detail = responseBody.error;
+            } catch (_) {}
+            throw new Error(detail);
+        }
+        if (!data?.ok) throw new Error(data?.error || 'No se pudieron obtener las plantas');
+        return data.plants || [];
+    }
+
+    async function getGrowattDevices(plantId, apiToken = '', apiUrl = '') {
+        const client = ensureClient();
+        const { data, error } = await client.functions.invoke('growatt-sync', {
+            body: { action: 'get-devices', plantId, apiToken: apiToken.trim(), apiUrl: apiUrl.trim() }
+        });
+        if (error) {
+            let detail = error.message || 'Error al consultar dispositivos de Growatt';
+            try {
+                const responseBody = error.context && typeof error.context.json === 'function'
+                    ? await error.context.json()
+                    : null;
+                if (responseBody?.error) detail = responseBody.error;
+            } catch (_) {}
+            throw new Error(detail);
+        }
+        if (!data?.ok) throw new Error(data?.error || 'No se pudieron obtener los dispositivos');
+        return data.devices || [];
+    }
+
     async function getAlertasActivas(usuarioId = null) {
         const client = ensureClient();
         let query = client
@@ -458,6 +496,8 @@
         getLecturasByInversor,
         getUltimaLectura,
         sincronizarGrowatt,
+        getGrowattPlants,
+        getGrowattDevices,
         getAlertasActivas,
         getAllAlertas,
         resolverAlerta,

@@ -338,12 +338,24 @@
                     <label>Configuración de API</label>
                     <small style="display:block;color:var(--text-secondary);font-size:12px;margin-bottom:8px;">Estos datos se guardarán en la configuración del inversor. No compartas estas credenciales.</small>
                     <input type="url" id="invAdminApiUrl" class="form-control" placeholder="URL base de la API (opcional)" style="margin-bottom:8px;">
-                    <input type="text" id="invAdminPlantId" class="form-control" placeholder="ID o código de planta" style="margin-bottom:8px;">
+                    <div class="password-field" style="margin-bottom:8px;"><input type="password" id="invAdminApiToken" class="form-control" placeholder="Token/API key (opcional si ya existe)" data-password-input><button type="button" class="password-toggle" data-password-toggle="invAdminApiToken" aria-label="Mostrar token"><i class="fas fa-eye"></i></button></div>
+
+                    <!-- Asistente de plantas Growatt -->
+                    <div id="growattPlantAssistant" style="display:none;margin-bottom:10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:10px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                            <span style="font-size:12px;font-weight:600;color:#0f172a;"><i class="fas fa-bolt" style="color:#f59e0b;"></i> Asistente de Plantas Growatt</span>
+                            <button type="button" id="btnCargarPlantasGrowatt" class="btn-outline" style="font-size:11px;padding:3px 8px;cursor:pointer;"><i class="fas fa-search"></i> Cargar Plantas</button>
+                        </div>
+                        <small style="display:block;color:#64748b;font-size:11px;margin-bottom:6px;">Obtén los IDs reales de tu cuenta con un clic sin tener que adivinarlos.</small>
+                        <select id="invAdminPlantSelect" class="form-control" style="display:none;font-size:12px;margin-bottom:6px;background:white;"></select>
+                        <div id="invAdminDevicesInfo" style="display:none;font-size:11px;color:#16a34a;margin-top:4px;"></div>
+                    </div>
+
+                    <input type="text" id="invAdminPlantId" class="form-control" placeholder="ID numérico de planta (ej. 2358998)" style="margin-bottom:8px;">
                     <input type="text" id="invAdminGatewayId" class="form-control" placeholder="ID/serie del gateway o DTU" style="margin-bottom:8px;">
                     <input type="text" id="invAdminSerial" class="form-control" placeholder="Número de serie del inversor" style="margin-bottom:8px;">
                     <input type="text" id="invAdminApiUser" class="form-control" placeholder="Usuario API" style="margin-bottom:8px;">
                     <div class="password-field" style="margin-bottom:8px;"><input type="password" id="invAdminApiPassword" class="form-control" placeholder="Contraseña API (dejar vacía para conservarla)" data-password-input><button type="button" class="password-toggle" data-password-toggle="invAdminApiPassword" aria-label="Mostrar contraseña"><i class="fas fa-eye"></i></button></div>
-                    <div class="password-field"><input type="password" id="invAdminApiToken" class="form-control" placeholder="Token/API key (opcional)" data-password-input><button type="button" class="password-toggle" data-password-toggle="invAdminApiToken" aria-label="Mostrar token"><i class="fas fa-eye"></i></button></div>
                 </div>
                 <div class="form-group"><label>Asignar a</label><select id="invAdminTecnico" class="form-control"><option value="">Sin asignar</option></select></div>
             </div>

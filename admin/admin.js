@@ -490,11 +490,17 @@ function renderAdminApiStatus() {
         const status = apiStatus === 'connected' ? 'Conectada' : apiStatus === 'error' ? 'Error' : 'Pendiente';
         const color = apiStatus === 'connected' ? '#16a34a' : apiStatus === 'error' ? '#dc2626' : '#64748b';
         const canDiagnose = inverter.marca?.toLowerCase() === 'growatt';
+        const errorDetail = apiStatus === 'error' && inverter.api_last_error
+            ? `<div style="font-size:11px;color:#dc2626;font-weight:normal;margin-top:3px;max-width:220px;line-height:1.2;" title="${escapeHtml(inverter.api_last_error)}">${escapeHtml(inverter.api_last_error)}</div>`
+            : '';
         return `
             <tr>
                 <td><strong>${escapeHtml(inverter.nombre)}</strong></td>
                 <td>${escapeHtml(inverter.marca)}</td>
-                <td><span style="color:${color};font-weight:600;">${status}</span></td>
+                <td>
+                    <span style="color:${color};font-weight:600;">${status}</span>
+                    ${errorDetail}
+                </td>
                 <td>${formatAdminSyncDate(inverter.api_last_sync)}</td>
                 <td>${canDiagnose ? `<button class="btn-outline admin-api-diagnostic-btn" data-id="${escapeHtml(inverter.id)}">Diagnosticar</button>` : '<span style="color:#64748b;font-size:12px;">No disponible</span>'}</td>
             </tr>`;
@@ -892,7 +898,23 @@ function abrirModalInverterAdmin(inversor = null) {
         tecnicos.filter(t => t.estado === 'activo' && t.rol !== 'admin').map(t =>
             `<option value="${t.id}">${t.nombre}</option>`
         ).join('');
-    
+
+    const marcaSelect = document.getElementById('invAdminMarca');
+    const assistant = document.getElementById('growattPlantAssistant');
+    const plantSelect = document.getElementById('invAdminPlantSelect');
+    const devicesInfo = document.getElementById('invAdminDevicesInfo');
+    if (plantSelect) {
+        plantSelect.innerHTML = '';
+        plantSelect.style.display = 'none';
+    }
+    if (devicesInfo) {
+        devicesInfo.innerHTML = '';
+        devicesInfo.style.display = 'none';
+    }
+    if (assistant && marcaSelect) {
+        assistant.style.display = marcaSelect.value.toLowerCase() === 'growatt' ? 'block' : 'none';
+    }
+
     modal.classList.add('open');
 }
 
@@ -1195,6 +1217,110 @@ document.getElementById('cancelModalInverterAdmin')?.addEventListener('click', (
 });
 document.getElementById('modalInverterAdmin')?.addEventListener('click', (e) => {
     if (e.target === e.currentTarget) document.getElementById('modalInverterAdmin').classList.remove('open');
+});
+
+document.getElementById('invAdminMarca')?.addEventListener('change', function() {
+    const assistant = document.getElementById('growattPlantAssistant');
+    if (assistant) {
+        assistant.style.display = this.value.toLowerCase() === 'growatt' ? 'block' : 'none';
+    }
+});
+
+let cargandoPlantasGrowatt = false;
+document.getElementById('btnCargarPlantasGrowatt')?.addEventListener('click', async function() {
+    if (cargandoPlantasGrowatt) return;
+    const btn = this;
+    const tokenInput = document.getElementById('invAdminApiToken');
+    const plantSelect = document.getElementById('invAdminPlantSelect');
+    const devicesInfo = document.getElementById('invAdminDevicesInfo');
+    const currentPlantId = document.getElementById('invAdminPlantId').value.trim();
+
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cargando...';
+    cargandoPlantasGrowatt = true;
+
+    try {
+        if (typeof db.getGrowattPlants !== 'function') {
+            throw new Error('La función para obtener plantas no está disponible.');
+        }
+        const plants = await db.getGrowattPlants(tokenInput.value.trim());
+        if (!plants || !plants.length) {
+            throw new Error('No se encontraron plantas en esta cuenta de Growatt.');
+        }
+
+        plantSelect.innerHTML = `<option value="">-- Selecciona tu planta (${plants.length} encontradas) --</option>` +
+            plants.map(p => {
+                const isSelected = p.plant_id === currentPlantId ? 'selected' : '';
+                return `<option value="${escapeHtml(p.plant_id)}" data-name="${escapeHtml(p.name)}" ${isSelected}>${escapeHtml(p.name)} [ID: ${escapeHtml(p.plant_id)}]${p.city ? ' - ' + escapeHtml(p.city) : ''}</option>`;
+            }).join('');
+        plantSelect.style.display = 'block';
+
+        if (devicesInfo) {
+            devicesInfo.innerHTML = `✅ ${plants.length} plantas detectadas en tu cuenta Growatt.`;
+            devicesInfo.style.display = 'block';
+        }
+        showToast(`Se encontraron ${plants.length} plantas en Growatt`, 'success');
+    } catch (err) {
+        console.error('Error cargando plantas Growatt:', err);
+        alert('No se pudieron obtener las plantas: ' + (err.message || err));
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        cargandoPlantasGrowatt = false;
+    }
+});
+
+document.getElementById('invAdminPlantSelect')?.addEventListener('change', async function() {
+    const selectedPlantId = this.value;
+    if (!selectedPlantId) return;
+
+    document.getElementById('invAdminPlantId').value = selectedPlantId;
+    const selectedOption = this.options[this.selectedIndex];
+    const plantName = selectedOption?.dataset?.name || '';
+    const nameInput = document.getElementById('invAdminNombre');
+    if (plantName && !nameInput.value.trim()) {
+        nameInput.value = plantName;
+    }
+
+    const devicesInfo = document.getElementById('invAdminDevicesInfo');
+    if (devicesInfo) {
+        devicesInfo.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Consultando dispositivos de esta planta...`;
+        devicesInfo.style.display = 'block';
+    }
+
+    try {
+        const token = document.getElementById('invAdminApiToken').value.trim();
+        const devices = await db.getGrowattDevices(selectedPlantId, token);
+        if (devices && devices.length) {
+            const firstDevice = devices[0];
+            const serialInput = document.getElementById('invAdminSerial');
+            const gatewayInput = document.getElementById('invAdminGatewayId');
+            const modeloInput = document.getElementById('invAdminModelo');
+
+            if (firstDevice.device_sn && !serialInput.value.trim()) {
+                serialInput.value = firstDevice.device_sn;
+            }
+            if (firstDevice.datalogger_sn && !gatewayInput.value.trim()) {
+                gatewayInput.value = firstDevice.datalogger_sn;
+            }
+            if (firstDevice.model && (!modeloInput.value.trim() || modeloInput.value === 'No especificado')) {
+                modeloInput.value = firstDevice.model;
+            }
+
+            if (devicesInfo) {
+                devicesInfo.innerHTML = `✅ Planta vinculada (ID: ${selectedPlantId}). Dispositivos encontrados: ${devices.map(d => d.device_sn).filter(Boolean).join(', ')}`;
+            }
+            showToast('ID y datos de planta asignados', 'success');
+        } else if (devicesInfo) {
+            devicesInfo.innerHTML = `✅ ID de planta asignado: ${selectedPlantId}`;
+        }
+    } catch (e) {
+        console.warn('No se pudieron autocompletar dispositivos:', e);
+        if (devicesInfo) {
+            devicesInfo.innerHTML = `✅ ID de planta asignado: ${selectedPlantId}`;
+        }
+    }
 });
 
 document.getElementById('searchInverterAdmin')?.addEventListener('input', renderAdminInversores);
