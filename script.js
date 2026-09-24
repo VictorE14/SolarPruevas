@@ -649,18 +649,28 @@ function adjustInverterChartWidth(itemCount) {
     if (!wrapper || !container) return;
 
     const count = Math.max(1, Number(itemCount) || 0);
-    // 95px mínimo por cada inversor para que los nombres de 10 caracteres tengan al menos 25px de separación libre
-    const minBarWidth = 95;
-    const yAxisWidth = 60;
-    const neededWidth = (count * minBarWidth) + yAxisWidth;
-    const containerWidth = container.clientWidth || 320;
+    const isMobile = window.innerWidth <= 768;
 
-    if (neededWidth > containerWidth) {
-        wrapper.style.width = `${neededWidth}px`;
-        wrapper.style.minWidth = `${neededWidth}px`;
-    } else {
+    if (isMobile) {
+        // En celular: responsivo sin scroll horizontal
         wrapper.style.width = '100%';
         wrapper.style.minWidth = '100%';
+        container.style.overflowX = 'hidden';
+    } else {
+        // En tablet y computadora: scroll horizontal si hay muchos inversores
+        container.style.overflowX = 'auto';
+        const minBarWidth = 90;
+        const yAxisWidth = 60;
+        const neededWidth = (count * minBarWidth) + yAxisWidth;
+        const containerWidth = container.clientWidth || 600;
+
+        if (neededWidth > containerWidth) {
+            wrapper.style.width = `${neededWidth}px`;
+            wrapper.style.minWidth = `${neededWidth}px`;
+        } else {
+            wrapper.style.width = '100%';
+            wrapper.style.minWidth = '100%';
+        }
     }
 }
 
@@ -756,8 +766,11 @@ function initDashboardCharts() {
         const inverterData = sorted.length ? sorted.map(i => Number(i.energiaHoy) || 0) : [0];
         const colors = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899'];
 
+        const isMobile = window.innerWidth <= 768;
         adjustInverterChartWidth(sorted.length);
-        enableDragToScroll(document.querySelector('.chart-scroll-container'));
+        if (!isMobile) {
+            enableDragToScroll(document.querySelector('.chart-scroll-container'));
+        }
 
         inverterChartInstance = new Chart(ctx1, {
             type: 'bar',
@@ -780,7 +793,7 @@ function initDashboardCharts() {
                 responsive: true,
                 maintainAspectRatio: false,
                 animation: { duration: 250 },
-                layout: { padding: { top: 8, right: 14, left: 4, bottom: 0 } },
+                layout: { padding: { top: 8, right: isMobile ? 8 : 14, left: 4, bottom: isMobile ? 6 : 0 } },
                 events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchend'],
                 plugins: {
                     legend: { display: false },
@@ -806,9 +819,9 @@ function initDashboardCharts() {
                         border: { display: false },
                         ticks: {
                             color: '#475569',
-                            font: { size: 11, weight: '500' },
-                            maxRotation: 0,
-                            minRotation: 0,
+                            font: { size: isMobile ? 10 : 11, weight: '500' },
+                            maxRotation: isMobile ? 45 : 0,
+                            minRotation: isMobile ? 45 : 0,
                             autoSkip: false, // NUNCA omitir ningún inversor
                             callback: (value) => formatChartLabel(inverterLabels[value] || value, 10)
                         },
@@ -899,7 +912,15 @@ function updateDashboardCharts() {
     const inverterLabels = sorted.length ? sorted.map(inverter => inverter.nombre) : ['Sin datos'];
     const inverterData = sorted.length ? sorted.map(inverter => Number(inverter.energiaHoy) || 0) : [0];
 
+    const isMobile = window.innerWidth <= 768;
     adjustInverterChartWidth(sorted.length);
+    inverterChartInstance.options.scales.x.ticks.maxRotation = isMobile ? 45 : 0;
+    inverterChartInstance.options.scales.x.ticks.minRotation = isMobile ? 45 : 0;
+    inverterChartInstance.options.scales.x.ticks.font.size = isMobile ? 10 : 11;
+    inverterChartInstance.options.scales.x.ticks.autoSkip = false;
+    inverterChartInstance.options.scales.x.ticks.callback = (value) => formatChartLabel(inverterLabels[value] || value, 10);
+    inverterChartInstance.options.layout.padding.right = isMobile ? 8 : 14;
+    inverterChartInstance.options.layout.padding.bottom = isMobile ? 6 : 0;
     inverterChartInstance.resize();
 
     inverterChartInstance.data.labels = inverterLabels;
@@ -911,8 +932,6 @@ function updateDashboardCharts() {
     inverterChartInstance.data.datasets[0].maxBarThickness = 30;
     inverterChartInstance.data.datasets[0].categoryPercentage = 0.62;
     inverterChartInstance.data.datasets[0].barPercentage = 0.75;
-    inverterChartInstance.options.scales.x.ticks.autoSkip = false;
-    inverterChartInstance.options.scales.x.ticks.callback = (value) => formatChartLabel(inverterLabels[value] || value, 10);
 
     inverterChartInstance.update('none');
 
@@ -1274,6 +1293,12 @@ document.querySelector('.chart-expand-btn')?.addEventListener('click', function(
 window.addEventListener('resize', () => {
     adjustInverterChartWidth(inverters ? inverters.length : 0);
     if (inverterChartInstance) {
+        const isMobile = window.innerWidth <= 768;
+        inverterChartInstance.options.scales.x.ticks.maxRotation = isMobile ? 45 : 0;
+        inverterChartInstance.options.scales.x.ticks.minRotation = isMobile ? 45 : 0;
+        inverterChartInstance.options.scales.x.ticks.font.size = isMobile ? 10 : 11;
+        inverterChartInstance.options.layout.padding.right = isMobile ? 8 : 14;
+        inverterChartInstance.options.layout.padding.bottom = isMobile ? 6 : 0;
         inverterChartInstance.resize();
     }
 });
