@@ -612,6 +612,7 @@ function startWeatherUpdates() {
 let weeklyChartInstance = null;
 let inverterChartInstance = null;
 let statsChartInstance = null;
+
 function buildWeeklyProductionData() {
     const days = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
     const data = Array(days.length).fill(0);
@@ -642,6 +643,23 @@ function formatChartLabel(label, maxLength = 10) {
     return `${text.slice(0, keepLength).trimEnd()}…`;
 }
 
+function adjustInverterChartWidth(itemCount) {
+    const wrapper = document.getElementById('inverterChartWrapper');
+    const container = wrapper ? wrapper.parentElement : null;
+    if (!wrapper || !container) return;
+
+    const minBarWidth = 65; // Píxeles mínimos por inversor para que quepa la barra y etiqueta de 9 letras sin saltos
+    const containerWidth = container.clientWidth || 360;
+    const count = Math.max(1, Number(itemCount) || 0);
+    const neededWidth = count * minBarWidth;
+
+    if (neededWidth > containerWidth) {
+        wrapper.style.width = `${neededWidth}px`;
+    } else {
+        wrapper.style.width = '100%';
+    }
+}
+
 function initDashboardCharts() {
     console.log('📊 Inicializando gráficas...');
     if (typeof Chart === 'undefined') {
@@ -662,6 +680,9 @@ function initDashboardCharts() {
         const inverterLabels = sorted.length ? sorted.map(i => i.nombre) : ['Sin datos'];
         const inverterData = sorted.length ? sorted.map(i => Number(i.energiaHoy) || 0) : [0];
         const colors = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899'];
+
+        adjustInverterChartWidth(sorted.length);
+
         inverterChartInstance = new Chart(ctx1, {
             type: 'bar',
             data: {
@@ -693,6 +714,11 @@ function initDashboardCharts() {
                         bodyColor: '#fff',
                         padding: 10,
                         callbacks: {
+                            title: (items) => {
+                                if (!items || !items.length) return '';
+                                const idx = items[0].dataIndex;
+                                return sorted[idx]?.nombre || items[0].label || '';
+                            },
                             label: (context) => ` ${context.parsed.y.toFixed(1)} kWh`
                         }
                     }
@@ -706,8 +732,7 @@ function initDashboardCharts() {
                             font: { size: 11, weight: '500' },
                             maxRotation: 0,
                             minRotation: 0,
-                            autoSkip: true,
-                            maxTicksLimit: 6,
+                            autoSkip: false, // NUNCA omitir ningún inversor
                             callback: (value) => formatChartLabel(inverterLabels[value] || value, 10)
                         },
                         title: { display: true, text: 'Inversor', color: '#475569', font: { weight: '600', size: 12 } }
@@ -796,14 +821,21 @@ function updateDashboardCharts() {
     const sorted = [...inverters].sort((a, b) => b.energiaHoy - a.energiaHoy);
     const inverterLabels = sorted.length ? sorted.map(inverter => inverter.nombre) : ['Sin datos'];
     const inverterData = sorted.length ? sorted.map(inverter => Number(inverter.energiaHoy) || 0) : [0];
+
+    adjustInverterChartWidth(sorted.length);
+
     inverterChartInstance.data.labels = inverterLabels;
     inverterChartInstance.data.datasets[0].data = inverterData;
     inverterChartInstance.data.datasets[0].backgroundColor = inverterLabels.map((_, index) => colors[index % colors.length]);
     inverterChartInstance.data.datasets[0].borderColor = 'rgba(255,255,255,0.7)';
+    inverterChartInstance.data.datasets[0].borderWidth = 1;
+    inverterChartInstance.data.datasets[0].borderRadius = 5;
+    inverterChartInstance.data.datasets[0].maxBarThickness = 30;
     inverterChartInstance.data.datasets[0].categoryPercentage = 0.62;
     inverterChartInstance.data.datasets[0].barPercentage = 0.75;
-    inverterChartInstance.data.labels = inverterLabels;
+    inverterChartInstance.options.scales.x.ticks.autoSkip = false;
     inverterChartInstance.options.scales.x.ticks.callback = (value) => formatChartLabel(inverterLabels[value] || value, 10);
+
     inverterChartInstance.update('none');
 
     const weeklyProduction = buildWeeklyProductionData();
@@ -1155,8 +1187,16 @@ document.querySelector('.chart-expand-btn')?.addEventListener('click', function(
     const expanded = card.classList.toggle('expanded');
     this.setAttribute('aria-label', expanded ? 'Contraer gráfica' : 'Expandir gráfica');
     this.innerHTML = expanded ? '<i class="fas fa-compress"></i>' : '<i class="fas fa-expand"></i>';
+    adjustInverterChartWidth(inverters ? inverters.length : 0);
     if (inverterChartInstance) {
         setTimeout(() => inverterChartInstance.resize(), 150);
+    }
+});
+
+window.addEventListener('resize', () => {
+    adjustInverterChartWidth(inverters ? inverters.length : 0);
+    if (inverterChartInstance) {
+        inverterChartInstance.resize();
     }
 });
 

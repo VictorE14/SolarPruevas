@@ -604,9 +604,43 @@ body {
     font-size: 0.95em;
 }
 
+.chart-scroll-container {
+    width: 100%;
+    height: calc(100% - 44px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    position: relative;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+
+.chart-scroll-container::-webkit-scrollbar {
+    height: 6px;
+}
+
+.chart-scroll-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.chart-scroll-container::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.4);
+    border-radius: 999px;
+}
+
+.chart-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(100, 116, 139, 0.6);
+}
+
+.chart-inner-wrapper {
+    height: 100%;
+    min-width: 100%;
+    position: relative;
+}
+
+.chart-inner-wrapper canvas,
 .chart-card canvas {
     width: 100% !important;
-    height: calc(100% - 42px) !important;
+    height: 100% !important;
     max-height: 100%;
     display: block;
 }
@@ -627,6 +661,7 @@ body {
 
 .chart-expand-btn:hover {
     background: #e2e8f0;
+    color: #2563eb;
     transform: scale(1.03);
 }
 
@@ -1070,15 +1105,15 @@ footer {
         font-size: 20px;
     }
     .chart-card {
-        height: 240px;
+        height: 290px;
         padding: 12px 14px;
     }
     .chart-card.chart-card-expandable.expanded {
-        height: 360px;
+        height: 480px;
     }
     .chart-card canvas {
-        max-height: 180px;
-        height: calc(100% - 40px) !important;
+        max-height: none;
+        height: calc(100% - 44px) !important;
     }
     .table-card {
         padding: 10px 12px;

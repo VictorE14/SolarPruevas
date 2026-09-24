@@ -509,6 +509,17 @@ function formatAdminSyncDate(value) {
     return value ? new Date(value).toLocaleString('es-MX') : 'Sin sincronización';
 }
 
+function getGrowattErrorMessage(error) {
+    const message = error instanceof Error ? error.message : String(error || 'Error desconocido');
+    if (message.includes('error_frequently_access') || message.includes('limitó temporalmente')) {
+        return 'Growatt bloqueó temporalmente las consultas por exceso de frecuencia. Espera unos minutos antes de volver a diagnosticar.';
+    }
+    if (message.includes('error_permission_denied')) {
+        return 'Growatt rechazó el token API. Reemplázalo por un token vigente con acceso a esta cuenta y a la planta configurada.';
+    }
+    return message;
+}
+
 async function diagnoseAdminApi(id) {
     const inverter = inversoresAdmin.find(item => item.id === id);
     if (!inverter) return;
@@ -529,9 +540,21 @@ async function diagnoseAdminApi(id) {
         const power = result?.powerKw !== undefined ? ` Potencia: ${result.powerKw} kW.` : '';
         alert(`"${inverter.nombre}" se sincronizó correctamente.${power}`);
     } catch (error) {
+        const errorMessage = getGrowattErrorMessage(error);
+        if (errorMessage.includes('bloqueó temporalmente')) {
+            adminApiRetryState.set(id, {
+                failures: 1,
+                nextAttemptAt: Date.now() + ADMIN_API_RATE_LIMIT_RETRY_MS
+            });
+        }
         inversoresAdmin = await db.getAllInversores().catch(() => inversoresAdmin);
         renderAdminApiStatus();
-        alert(`No se pudo conectar "${inverter.nombre}": ${error.message}`);
+        alert(`No se pudo conectar "${inverter.nombre}": ${errorMessage}`);
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.textContent = 'Diagnosticar';
+        }
     }
 }
 
@@ -1043,7 +1066,7 @@ document.getElementById('saveInverterAdmin')?.addEventListener('click', async fu
         device_serial: document.getElementById('invAdminSerial').value.trim(),
         api_username: document.getElementById('invAdminApiUser').value.trim(),
         api_password: document.getElementById('invAdminApiPassword').value,
-        api_token: document.getElementById('invAdminApiToken').value
+        api_token: document.getElementById('invAdminApiToken').value.trim()
     };
     const existingInverter = id ? inversoresAdmin.find(inversor => inversor.id === id) : null;
     const apiUpdates = Object.fromEntries(Object.entries(apiConfig).filter(([key, value]) => {
@@ -1244,17 +1267,6 @@ async function initAdmin() {
         await loadLogs();
 
         if (adminApiIntervalId) clearInterval(adminApiIntervalId);
-        syncAdminApisAutomatically().catch(error => {
-            console.error('❌ Error en sincronización inicial del admin:', error);
-        });
-        adminApiIntervalId = setInterval(async () => {
-            try {
-                await syncAdminApisAutomatically();
-            } catch (error) {
-                console.error('❌ Error en sincronización automática del admin:', error);
-            }
-        }, ADMIN_API_RETRY_MS);
-        
         console.log('✅ Panel de Administración listo - TODOS los usuarios visibles');
         
     } catch (error) {
