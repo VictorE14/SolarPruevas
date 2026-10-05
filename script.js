@@ -286,10 +286,10 @@ function renderDashboardTable() {
     `).join('');
 
     html += `
-        <tr style="background: #f1f5f9; font-weight: 600; border-top: 2px solid #d1d5db;">
-            <td colspan="3" style="text-align: right; font-size: 13px; color: var(--text-secondary);">TOTAL</td>
-            <td>${totalPower.toFixed(1)} kW</td>
-            <td>${totalEnergy.toFixed(1)} kWh</td>
+        <tr class="table-total-row">
+            <td colspan="3" class="total-label">TOTAL</td>
+            <td class="total-power">${totalPower.toFixed(1)} kW</td>
+            <td class="total-energy">${totalEnergy.toFixed(1)} kWh</td>
             <td></td>
         </tr>
     `;
