@@ -106,9 +106,91 @@
             animation: spin 0.8s ease infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        .login-theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(8px);
+            color: #ffffff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 18px;
+            transition: all 0.25s ease;
+            z-index: 100;
+        }
+        .login-theme-toggle:hover {
+            transform: scale(1.08);
+            background: rgba(255, 255, 255, 0.25);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+        body.dark-mode {
+            background: linear-gradient(135deg, #070b14 0%, #0f172a 100%);
+        }
+        body.dark-mode .login-theme-toggle {
+            background: rgba(15, 23, 42, 0.6);
+            border-color: rgba(255, 255, 255, 0.15);
+            color: #fbbf24;
+        }
+        body.dark-mode .login-theme-toggle:hover {
+            border-color: #f59e0b;
+            box-shadow: 0 0 12px rgba(245, 158, 11, 0.35);
+        }
+        body.dark-mode .login-box {
+            background: #131d33;
+            border-color: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 24px 70px rgba(0, 0, 0, 0.65);
+        }
+        body.dark-mode .login-logo h1 {
+            color: #f1f5f9;
+        }
+        body.dark-mode .login-logo p,
+        body.dark-mode .form-group label {
+            color: #94a3b8;
+        }
+        body.dark-mode .form-control {
+            background: #0b1120;
+            border-color: #334155;
+            color: #f1f5f9;
+        }
+        body.dark-mode .form-control:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+        }
+        body.dark-mode .password-toggle {
+            color: #94a3b8;
+        }
+        body.dark-mode .password-toggle:hover {
+            color: #3b82f6;
+            background: rgba(59, 130, 246, 0.12);
+        }
+        body.dark-mode .login-footer {
+            border-top-color: #1e293b;
+        }
     </style>
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('crode_theme');
+            const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                document.addEventListener('DOMContentLoaded', () => {
+                    document.body.classList.add('dark-mode');
+                });
+            }
+        })();
+    </script>
 </head>
 <body>
+    <button type="button" class="login-theme-toggle" id="themeToggleBtn" aria-label="Cambiar tema" title="Alternar modo oscuro / claro">
+        <i class="fas fa-moon"></i>
+    </button>
 
     <div class="login-container">
         <div class="login-box">
@@ -294,7 +376,38 @@
             }
         });
 
-        document.addEventListener('DOMContentLoaded', checkSession);
+        // ===== GESTIÓN DE TEMA OSCURO =====
+        function initTheme() {
+            const savedTheme = localStorage.getItem('crode_theme');
+            const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const isDark = savedTheme === 'dark' || (!savedTheme && prefersDark);
+            setTheme(isDark ? 'dark' : 'light', false);
+        }
+
+        function setTheme(theme, updateStorage = true) {
+            const isDark = theme === 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+            document.body.classList.toggle('dark-mode', isDark);
+            if (updateStorage) {
+                localStorage.setItem('crode_theme', theme);
+            }
+            const toggleBtn = document.getElementById('themeToggleBtn');
+            if (toggleBtn) {
+                toggleBtn.innerHTML = isDark ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
+                toggleBtn.setAttribute('title', isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
+                toggleBtn.setAttribute('aria-label', isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
+            }
+        }
+
+        document.getElementById('themeToggleBtn')?.addEventListener('click', () => {
+            const isDark = document.body.classList.contains('dark-mode');
+            setTheme(isDark ? 'light' : 'dark', true);
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initTheme();
+            checkSession();
+        });
         console.log('✅ Login único cargado');
     </script>
 

@@ -664,7 +664,7 @@ function renderTecnicoInversores(tecnico) {
 
     if (!inversoresAdmin || inversoresAdmin.length === 0) {
         container.innerHTML = `
-            <div style="padding:20px;text-align:center;color:var(--text-secondary);width:100%;">
+            <div style="padding:10px 14px;font-size:13px;color:var(--text-secondary);background:var(--bg-card);border:1px solid #e2e8f0;border-radius:8px;">
                 <i class="fas fa-spinner fa-spin"></i> Cargando inversores...
             </div>
         `;
@@ -672,108 +672,108 @@ function renderTecnicoInversores(tecnico) {
         return;
     }
 
-    const selectedIds = tecnico?.inversores || [];
-    
-    const activos = inversoresAdmin.filter(inv => inv.estado === 'online');
-    const warning = inversoresAdmin.filter(inv => inv.estado === 'warning');
-    const offline = inversoresAdmin.filter(inv => inv.estado === 'offline' || inv.estado === null);
-    
-    let html = '';
+    const selectedIds = new Set(tecnico?.inversores || []);
+    const totalInversores = inversoresAdmin.length;
 
-    // Activos
-    html += `
-        <div style="width:100%; margin-top:6px; margin-bottom:4px;">
-            <div style="display:flex;align-items:center;gap:8px;font-weight:600; font-size:14px; color:var(--success);">
-                <i class="fas fa-circle" style="font-size:10px;"></i>
-                Inversores Activos
-                <span style="font-weight:400; font-size:12px; color:var(--text-secondary);">(${activos.length})</span>
-                <span style="font-weight:400; font-size:11px; color:var(--text-secondary); margin-left:auto;">
-                    <i class="fas fa-check-circle"></i> Seleccionados: ${activos.filter(inv => selectedIds.includes(inv.id)).length}
-                </span>
-            </div>
-            <hr style="border:1px solid #e2e8f0; margin:4px 0 6px 0;">
-        </div>
+    const updateTriggerText = () => {
+        const checkedBoxes = container.querySelectorAll('.tec-inversor-check:checked');
+        const count = checkedBoxes.length;
+        const triggerText = container.querySelector('#tecSelectBtnText');
+        if (!triggerText) return;
+
+        if (count === 0) {
+            triggerText.textContent = `-- Selecciona tus inversores (${totalInversores} encontrados) --`;
+        } else if (count === 1) {
+            const firstId = checkedBoxes[0].value;
+            const inv = inversoresAdmin.find(i => String(i.id) === String(firstId));
+            const ubicacion = inv?.ubicacion ? ` - ${inv.ubicacion}` : '';
+            triggerText.textContent = inv ? `${inv.nombre} [${inv.marca || 'Inversor'}]${ubicacion}` : '1 inversor seleccionado';
+        } else {
+            triggerText.textContent = `-- ${count} de ${totalInversores} inversores seleccionados --`;
+        }
+    };
+
+    let html = `
+        <div class="tec-simple-dropdown open" id="tecSimpleDropdown">
+            <button type="button" class="tec-select-btn" id="tecSelectBtn">
+                <span id="tecSelectBtnText">-- Selecciona tus inversores (${totalInversores} encontrados) --</span>
+                <i class="fas fa-chevron-down tec-select-chevron"></i>
+            </button>
+            <div class="tec-select-menu" id="tecSelectMenu">
+                <div class="tec-select-header-actions">
+                    <span class="tec-select-menu-title">-- Selecciona tus inversores (${totalInversores} encontrados) --</span>
+                    <div class="tec-select-quick-links">
+                        <button type="button" id="tecQuickAll">Todos</button>
+                        <span>|</span>
+                        <button type="button" id="tecQuickNone">Ninguno</button>
+                    </div>
+                </div>
+                <div class="tec-select-options-list">
     `;
 
-    if (activos.length === 0) {
-        html += `<p style="color:var(--text-secondary); font-size:13px; margin:4px 0; padding-left:8px; width:100%;">No hay inversores activos disponibles.</p>`;
-    } else {
-        html += `<div style="display:flex;flex-direction:column;gap:3px;margin-bottom:8px;width:100%;">`;
-        activos.forEach(inv => {
-            const checked = selectedIds.includes(inv.id) ? 'checked' : '';
-            html += `
-                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;background:#f0fdf4;padding:4px 10px;border-radius:4px;border-left:3px solid #22c55e;">
-                    <input type="checkbox" value="${inv.id}" ${checked} class="tec-inversor-check" style="flex-shrink:0;">
-                    <span style="flex:1;">${inv.nombre}</span>
-                </label>
-            `;
-        });
-        html += `</div>`;
-    }
+    inversoresAdmin.forEach(inv => {
+        const isChecked = selectedIds.has(inv.id);
+        const marca = inv.marca || 'Inversor';
+        const ubicacion = inv.ubicacion ? ` - ${inv.ubicacion}` : '';
+        const itemText = `${inv.nombre} [${marca}]${ubicacion}`;
 
-    // Advertencia
+        html += `
+            <label class="tec-select-row ${isChecked ? 'is-selected' : ''}" title="${escapeHtml(itemText)}">
+                <input type="checkbox" value="${escapeHtml(inv.id)}" ${isChecked ? 'checked' : ''} class="tec-inversor-check">
+                <span class="tec-select-row-text">${escapeHtml(itemText)}</span>
+            </label>
+        `;
+    });
+
     html += `
-        <div style="width:100%; margin-top:8px; margin-bottom:4px;">
-            <div style="display:flex;align-items:center;gap:8px;font-weight:600; font-size:14px; color:var(--accent);">
-                <i class="fas fa-circle" style="font-size:10px; color:var(--accent);"></i>
-                Inversores con Advertencia
-                <span style="font-weight:400; font-size:12px; color:var(--text-secondary);">(${warning.length})</span>
-                <span style="font-weight:400; font-size:11px; color:var(--text-secondary); margin-left:auto;">
-                    <i class="fas fa-check-circle"></i> Seleccionados: ${warning.filter(inv => selectedIds.includes(inv.id)).length}
-                </span>
+                </div>
             </div>
-            <hr style="border:1px solid #e2e8f0; margin:4px 0 6px 0;">
         </div>
     `;
-
-    if (warning.length === 0) {
-        html += `<p style="color:var(--text-secondary); font-size:13px; margin:4px 0; padding-left:8px; width:100%;">No hay inversores con advertencia.</p>`;
-    } else {
-        html += `<div style="display:flex;flex-direction:column;gap:3px;margin-bottom:8px;width:100%;">`;
-        warning.forEach(inv => {
-            const checked = selectedIds.includes(inv.id) ? 'checked' : '';
-            html += `
-                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;background:#fef9f0;padding:4px 10px;border-radius:4px;border-left:3px solid #f59e0b;">
-                    <input type="checkbox" value="${inv.id}" ${checked} class="tec-inversor-check" style="flex-shrink:0;">
-                    <span style="flex:1;">${inv.nombre}</span>
-                </label>
-            `;
-        });
-        html += `</div>`;
-    }
-
-    // Offline
-    html += `
-        <div style="width:100%; margin-top:8px; margin-bottom:4px;">
-            <div style="display:flex;align-items:center;gap:8px;font-weight:600; font-size:14px; color:var(--danger);">
-                <i class="fas fa-circle" style="font-size:10px; color:var(--danger);"></i>
-                Inversores Offline
-                <span style="font-weight:400; font-size:12px; color:var(--text-secondary);">(${offline.length})</span>
-                <span style="font-weight:400; font-size:11px; color:var(--text-secondary); margin-left:auto;">
-                    <i class="fas fa-check-circle"></i> Seleccionados: ${offline.filter(inv => selectedIds.includes(inv.id)).length}
-                </span>
-            </div>
-            <hr style="border:1px solid #e2e8f0; margin:4px 0 6px 0;">
-        </div>
-    `;
-
-    if (offline.length === 0) {
-        html += `<p style="color:var(--text-secondary); font-size:13px; margin:4px 0; padding-left:8px; width:100%;">No hay inversores offline.</p>`;
-    } else {
-        html += `<div style="display:flex;flex-direction:column;gap:3px;margin-bottom:4px;width:100%;">`;
-        offline.forEach(inv => {
-            const checked = selectedIds.includes(inv.id) ? 'checked' : '';
-            html += `
-                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;background:#fef2f2;padding:4px 10px;border-radius:4px;border-left:3px solid #ef4444;">
-                    <input type="checkbox" value="${inv.id}" ${checked} class="tec-inversor-check" style="flex-shrink:0;">
-                    <span style="flex:1;">${inv.nombre}</span>
-                </label>
-            `;
-        });
-        html += `</div>`;
-    }
 
     container.innerHTML = html;
+
+    const dropdown = container.querySelector('#tecSimpleDropdown');
+    const btn = container.querySelector('#tecSelectBtn');
+    const menu = container.querySelector('#tecSelectMenu');
+    const quickAll = container.querySelector('#tecQuickAll');
+    const quickNone = container.querySelector('#tecQuickNone');
+
+    updateTriggerText();
+
+    btn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const isOpen = dropdown.classList.toggle('open');
+        menu.style.display = isOpen ? 'block' : 'none';
+    });
+
+    container.querySelectorAll('.tec-inversor-check').forEach(chk => {
+        chk.addEventListener('change', function() {
+            const row = this.closest('.tec-select-row');
+            if (row) {
+                row.classList.toggle('is-selected', this.checked);
+            }
+            updateTriggerText();
+        });
+    });
+
+    quickAll?.addEventListener('click', (e) => {
+        e.preventDefault();
+        container.querySelectorAll('.tec-inversor-check').forEach(chk => {
+            chk.checked = true;
+            chk.closest('.tec-select-row')?.classList.add('is-selected');
+        });
+        updateTriggerText();
+    });
+
+    quickNone?.addEventListener('click', (e) => {
+        e.preventDefault();
+        container.querySelectorAll('.tec-inversor-check').forEach(chk => {
+            chk.checked = false;
+            chk.closest('.tec-select-row')?.classList.remove('is-selected');
+        });
+        updateTriggerText();
+    });
 }
 
 // ============================================================
@@ -878,6 +878,7 @@ function abrirModalInverterAdmin(inversor = null) {
         document.getElementById('invAdminApiToken').value = '';
     } else {
         document.getElementById('invAdminNombre').value = '';
+        document.getElementById('invAdminMarca').value = 'Growatt';
         document.getElementById('invAdminModelo').value = '';
         document.getElementById('invAdminUbicacion').value = '';
         document.getElementById('invAdminTecnico').value = '';
@@ -1418,7 +1419,49 @@ async function initAdmin() {
 //  VERIFICAR SESIÓN AL CARGAR (CON RECARGA AUTOMÁTICA)
 // ============================================================
 
+// ============================================================
+//  GESTIÓN DE TEMA OSCURO / CLARO
+// ============================================================
+
+function isDarkMode() {
+    return document.body.classList.contains('dark-mode');
+}
+
+function initTheme() {
+    const savedTheme = localStorage.getItem('crode_theme');
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const isDark = savedTheme === 'dark' || (!savedTheme && prefersDark);
+    setTheme(isDark ? 'dark' : 'light', false);
+}
+
+function setTheme(theme, updateStorage = true) {
+    const isDark = theme === 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+    document.body.classList.toggle('dark-mode', isDark);
+    if (updateStorage) {
+        localStorage.setItem('crode_theme', theme);
+    }
+    const toggleBtn = document.getElementById('themeToggleBtn');
+    if (toggleBtn) {
+        toggleBtn.innerHTML = isDark ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
+        toggleBtn.setAttribute('title', isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
+        toggleBtn.setAttribute('aria-label', isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
+    }
+}
+
+document.getElementById('themeToggleBtn')?.addEventListener('click', () => {
+    const isDark = isDarkMode();
+    setTheme(isDark ? 'light' : 'dark', true);
+});
+
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    if (!localStorage.getItem('crode_theme')) {
+        setTheme(e.matches ? 'dark' : 'light', false);
+    }
+});
+
 document.addEventListener('DOMContentLoaded', async function() {
+    initTheme();
     if (checkAdminSession()) {
         await initAdmin();
         

@@ -210,98 +210,230 @@
 }
 
 /* ============================================================
- *  LISTA DE INVERSORES - VERTICAL COMPACTA
+ *  LISTA DE INVERSORES ASIGNABLES - SELECT SIMPLE & ELEGANTE
  * ============================================================ */
 
 #tecInversoresList {
-    max-height: 320px;
-    overflow-y: auto;
-    padding: 8px 12px;
-    background: #f8fafc;
-    border-radius: 8px;
-    border: 1px solid #e2e8f0;
-    margin-top: 6px;
-}
-
-/* Scroll personalizado */
-#tecInversoresList::-webkit-scrollbar {
-    width: 5px;
-}
-#tecInversoresList::-webkit-scrollbar-track {
-    background: #f1f5f9;
-    border-radius: 10px;
-}
-#tecInversoresList::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 10px;
-}
-#tecInversoresList::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
-}
-
-/* Etiquetas de inversores en lista */
-#tecInversoresList label {
-    transition: all 0.15s ease;
-    font-size: 13px;
-    cursor: pointer;
-    margin: 0;
-}
-
-#tecInversoresList label:hover:not([style*="opacity: 0.5"]) {
-    transform: translateX(4px);
-    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-}
-
-/* Checkbox personalizado */
-#tecInversoresList input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    accent-color: var(--primary-light);
-    cursor: pointer;
-}
-
-#tecInversoresList input[type="checkbox"]:disabled {
-    accent-color: #94a3b8;
-    cursor: not-allowed;
-}
-
-/* Separadores de sección */
-#tecInversoresList .section-divider {
     width: 100%;
-    margin: 6px 0 4px 0;
+    margin-top: 4px;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
 }
 
-#tecInversoresList .section-title {
-    font-weight: 600;
-    font-size: 14px;
+.tec-simple-dropdown {
+    position: relative;
+    width: 100%;
+}
+
+.tec-select-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 12px;
+    font-size: 13.5px;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s ease;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #0f172a;
+}
+
+.tec-select-btn:hover {
+    border-color: #3b82f6;
+}
+
+.tec-select-chevron {
+    font-size: 11px;
+    color: #94a3b8;
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.tec-simple-dropdown.open .tec-select-chevron {
+    transform: rotate(180deg);
+}
+
+.tec-select-menu {
+    margin-top: 4px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    overflow: hidden;
+}
+
+.tec-select-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #64748b;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.tec-select-menu-title {
+    font-size: 12px;
+    color: #64748b;
+}
+
+.tec-select-quick-links {
     display: flex;
     align-items: center;
     gap: 6px;
+    font-size: 11.5px;
 }
 
-#tecInversoresList .section-title .count {
-    font-weight: 400;
-    color: var(--text-secondary);
-    font-size: 12px;
-}
-
-#tecInversoresList hr {
+.tec-select-quick-links button {
+    background: none;
     border: none;
-    border-top: 1px solid #e2e8f0;
-    margin: 3px 0 5px 0;
+    color: #2563eb;
+    font-weight: 600;
+    font-size: 11.5px;
+    cursor: pointer;
+    padding: 0;
 }
 
-/* Contador de seleccionados */
-#tecInversoresList .selected-count {
-    font-weight: 400;
-    font-size: 11px;
-    color: var(--text-secondary);
-    margin-left: auto;
+.tec-select-quick-links button:hover {
+    text-decoration: underline;
 }
 
-#tecInversoresList .selected-count i {
-    color: var(--success);
-    font-size: 12px;
+.tec-select-quick-links span {
+    color: #cbd5e1;
+}
+
+.tec-select-options-list {
+    max-height: 220px;
+    overflow-y: auto;
+    padding: 2px 0;
+}
+
+.tec-select-options-list::-webkit-scrollbar {
+    width: 6px;
+}
+.tec-select-options-list::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.04);
+}
+.tec-select-options-list::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+.tec-select-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 12px;
+    font-size: 13px;
+    color: #0f172a;
+    cursor: pointer;
+    transition: background-color 0.1s ease, color 0.1s ease;
+    user-select: none;
+    margin: 0;
+    line-height: 1.4;
+}
+
+.tec-select-row:hover {
+    background: #2563eb !important;
+    color: #ffffff !important;
+}
+
+.tec-select-row.is-selected {
+    background: #eff6ff;
+    font-weight: 500;
+}
+
+.tec-select-row.is-selected:hover {
+    background: #1d4ed8 !important;
+    color: #ffffff !important;
+}
+
+.tec-select-row .tec-inversor-check {
+    width: 15px;
+    height: 15px;
+    accent-color: #2563eb;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin: 0;
+}
+
+.tec-select-row-text {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ============================================================
+ *  MODO OSCURO - SELECT SIMPLE
+ * ============================================================ */
+
+body.dark-mode .tec-select-btn {
+    background: #0b1120;
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #f1f5f9;
+}
+
+body.dark-mode .tec-select-btn:hover {
+    border-color: #3b82f6;
+}
+
+body.dark-mode .tec-select-menu {
+    background: #0b1120;
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+
+body.dark-mode .tec-select-header-actions {
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+    color: #94a3b8;
+}
+
+body.dark-mode .tec-select-menu-title {
+    color: #94a3b8;
+}
+
+body.dark-mode .tec-select-quick-links button {
+    color: #60a5fa;
+}
+
+body.dark-mode .tec-select-quick-links span {
+    color: rgba(255, 255, 255, 0.2);
+}
+
+body.dark-mode .tec-select-options-list::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+body.dark-mode .tec-select-options-list::-webkit-scrollbar-thumb {
+    background: #334155;
+}
+
+body.dark-mode .tec-select-row {
+    color: #f1f5f9;
+}
+
+body.dark-mode .tec-select-row:hover {
+    background: #2563eb !important;
+    color: #ffffff !important;
+}
+
+body.dark-mode .tec-select-row.is-selected {
+    background: rgba(37, 99, 235, 0.22);
+}
+
+body.dark-mode .tec-select-row.is-selected:hover {
+    background: #1d4ed8 !important;
+    color: #ffffff !important;
 }
 
 /* ===== ACABADO INSTITUCIONAL DEL PANEL ADMINISTRATIVO ===== */

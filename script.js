@@ -758,6 +758,12 @@ function initDashboardCharts() {
         console.error('❌ No se encontraron los canvas para las gráficas');
         return;
     }
+
+    const isDark = document.body.classList.contains('dark-mode');
+    const chartTextColor = isDark ? '#94a3b8' : '#475569';
+    const chartGridColor = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(148, 163, 184, 0.18)';
+    const chartTitleColor = isDark ? '#cbd5e1' : '#475569';
+
     try {
         if (inverterChartInstance) { inverterChartInstance.destroy(); inverterChartInstance = null; }
         const ctx1 = canvas1.getContext('2d');
@@ -818,21 +824,21 @@ function initDashboardCharts() {
                         grid: { display: false },
                         border: { display: false },
                         ticks: {
-                            color: '#475569',
+                            color: chartTextColor,
                             font: { size: isMobile ? 10 : 11, weight: '500' },
                             maxRotation: isMobile ? 45 : 0,
                             minRotation: isMobile ? 45 : 0,
                             autoSkip: false, // NUNCA omitir ningún inversor
                             callback: (value) => formatChartLabel(inverterLabels[value] || value, 10)
                         },
-                        title: { display: true, text: 'Inversor', color: '#475569', font: { weight: '600', size: 12 } }
+                        title: { display: true, text: 'Inversor', color: chartTitleColor, font: { weight: '600', size: 12 } }
                     },
                     y: {
                         beginAtZero: true,
-                        grid: { color: 'rgba(148, 163, 184, 0.18)', drawBorder: false },
+                        grid: { color: chartGridColor, drawBorder: false },
                         border: { display: false },
-                        ticks: { color: '#475569', font: { size: 11 }, precision: 0 },
-                        title: { display: true, text: 'kWh', color: '#475569', font: { weight: '600', size: 12 } }
+                        ticks: { color: chartTextColor, font: { size: 11 }, precision: 0 },
+                        title: { display: true, text: 'kWh', color: chartTitleColor, font: { weight: '600', size: 12 } }
                     }
                 }
             }
@@ -852,8 +858,8 @@ function initDashboardCharts() {
                 datasets: [{
                     label: 'Producción total del sistema',
                     data: weeklyProduction.data,
-                    backgroundColor: weeklyProduction.data.map((value, index) => value === 0 ? 'rgba(148, 163, 184, 0.12)' : weeklyColors[index]),
-                    borderColor: 'rgba(255,255,255,0.3)',
+                    backgroundColor: weeklyProduction.data.map((value, index) => value === 0 ? (isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(148, 163, 184, 0.12)') : weeklyColors[index]),
+                    borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.3)',
                     borderWidth: 1,
                     borderRadius: 6,
                     borderSkipped: false,
@@ -884,15 +890,15 @@ function initDashboardCharts() {
                     x: {
                         grid: { display: false },
                         border: { display: false },
-                        ticks: { color: '#475569', font: { size: 11, weight: '500' } }
+                        ticks: { color: chartTextColor, font: { size: 11, weight: '500' } }
                     },
                     y: {
                         beginAtZero: true,
                         max: maxValue > 0 ? maxValue * 1.2 : 10,
-                        grid: { color: 'rgba(148, 163, 184, 0.18)', drawBorder: false },
+                        grid: { color: chartGridColor, drawBorder: false },
                         border: { display: false },
-                        ticks: { color: '#475569', font: { size: 11 }, precision: 0 },
-                        title: { display: true, text: 'kWh', color: '#475569', font: { weight: '600', size: 12 } }
+                        ticks: { color: chartTextColor, font: { size: 11 }, precision: 0 },
+                        title: { display: true, text: 'kWh', color: chartTitleColor, font: { weight: '600', size: 12 } }
                     }
                 }
             }
@@ -935,12 +941,13 @@ function updateDashboardCharts() {
 
     inverterChartInstance.update('none');
 
+    const isDark = document.body.classList.contains('dark-mode');
     const weeklyProduction = buildWeeklyProductionData();
     const weeklyColors = ['#34d399', '#2dd4bf', '#60a5fa', '#a78bfa', '#fbbf24', '#f97316', '#22c55e'];
     const weeklyDataset = weeklyChartInstance.data.datasets[0];
     weeklyDataset.data = weeklyProduction.data;
-    weeklyDataset.backgroundColor = weeklyProduction.data.map((value, index) => value === 0 ? 'rgba(148, 163, 184, 0.12)' : weeklyColors[index]);
-    weeklyDataset.borderColor = 'rgba(255,255,255,0.3)';
+    weeklyDataset.backgroundColor = weeklyProduction.data.map((value, index) => value === 0 ? (isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(148, 163, 184, 0.12)') : weeklyColors[index]);
+    weeklyDataset.borderColor = isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.3)';
     weeklyDataset.categoryPercentage = 0.72;
     weeklyDataset.barPercentage = 0.8;
     weeklyChartInstance.options.scales.y.max = Math.max(...weeklyProduction.data, 10) * 1.2;
@@ -996,11 +1003,55 @@ function buildStatsProductionData(range = 'semana') {
         return { type: 'bar', unit: 'kWh', labels: years.map(String), data: yearly.map(value => Number(value.toFixed(1))) };
     }
 
-    const dates = [...dailyValues.keys()].sort().slice(-7);
+    // range === 'dia': Todos los días del mes completo (1 al 28/29/30/31)
+    if (dailyValues.size === 0 && typeof dailyProductionByDate === 'object' && dailyProductionByDate !== null) {
+        Object.entries(dailyProductionByDate).forEach(([dateKey, energy]) => {
+            dailyValues.set(dateKey, Number(energy || 0));
+        });
+    }
+
+    const [todayYearStr, todayMonthStr] = todayKey.split('-');
+    let targetYear = parseInt(todayYearStr, 10);
+    let targetMonth = parseInt(todayMonthStr, 10); // 1-12
+
+    const sortedKeys = [...dailyValues.keys()].sort();
+    const hasCurrentMonthData = sortedKeys.some(k => k.startsWith(`${todayYearStr}-${todayMonthStr}`));
+    if (!hasCurrentMonthData && sortedKeys.length > 0) {
+        const latestKey = sortedKeys.at(-1);
+        const [lYear, lMonth] = latestKey.split('-');
+        targetYear = parseInt(lYear, 10);
+        targetMonth = parseInt(lMonth, 10);
+    }
+
+    const yearStr = String(targetYear);
+    const monthStr = String(targetMonth).padStart(2, '0');
+    const totalDays = new Date(targetYear, targetMonth, 0).getDate();
+
+    const labels = [];
+    const fullLabels = [];
+    const data = [];
+
+    for (let day = 1; day <= totalDays; day++) {
+        const dayStr = String(day).padStart(2, '0');
+        const dateKey = `${yearStr}-${monthStr}-${dayStr}`;
+        labels.push(dayStr);
+
+        const dateObj = new Date(`${dateKey}T12:00:00`);
+        const weekday = dateObj.toLocaleDateString('es-MX', { weekday: 'long' });
+        const monthName = dateObj.toLocaleDateString('es-MX', { month: 'long' });
+        const fullDateStr = `${weekday.charAt(0).toUpperCase() + weekday.slice(1)}, ${day} de ${monthName}`;
+        fullLabels.push(fullDateStr);
+
+        const energy = Number(dailyValues.get(dateKey) || 0);
+        data.push(Number(energy.toFixed(1)));
+    }
+
     return {
-        type: 'bar', unit: 'kWh',
-        labels: dates.map(dateKey => new Date(`${dateKey}T00:00:00`).toLocaleDateString('es-MX', { weekday: 'short', day: '2-digit' })),
-        data: dates.map(dateKey => Number(dailyValues.get(dateKey).toFixed(1)))
+        type: 'bar',
+        unit: 'kWh',
+        labels,
+        fullLabels,
+        data
     };
 }
 
@@ -1009,14 +1060,25 @@ function getSelectedStatsRange() {
 }
 
 function updateStatsSummary(range = getSelectedStatsRange()) {
+    const todayKey = getMexicoDateKey();
     const production = buildStatsProductionData(range);
-    const dailyProduction = buildStatsProductionData('dia');
+
+    let todayEnergy = 0;
+    dailyProductionByInverter.forEach(readings => {
+        todayEnergy += Number(readings.get(todayKey) || 0);
+    });
+    if (todayEnergy === 0 && dailyProductionByDate[todayKey]) {
+        todayEnergy = Number(dailyProductionByDate[todayKey] || 0);
+    }
+
     const totalEnergy = range === 'hora'
-        ? Number(dailyProduction.data.at(-1) || 0)
+        ? todayEnergy
         : production.data.reduce((sum, value) => sum + value, 0);
+
     const averagePower = inverters.length
         ? inverters.reduce((sum, inverter) => sum + Number(inverter.potencia || 0), 0) / inverters.length
         : 0;
+
     const totalElement = document.getElementById('statsTotalEnergy');
     const averageElement = document.getElementById('statsAvgPower');
     if (totalElement) totalElement.innerHTML = `${totalEnergy.toFixed(1)} <small>kWh</small>`;
@@ -1031,6 +1093,12 @@ function initStatsChart() {
     if (statsChartInstance) statsChartInstance.destroy();
     const range = getSelectedStatsRange();
     const production = updateStatsSummary(range);
+    const isDia = range === 'dia';
+    const isDark = document.body.classList.contains('dark-mode');
+    const statsTextColor = isDark ? '#94a3b8' : '#475569';
+    const statsGridColor = isDark ? 'rgba(255, 255, 255, 0.08)' : '#f1f5f9';
+    const statsBgColor = isDark ? 'rgba(59, 130, 246, 0.25)' : 'rgba(59, 130, 246, 0.1)';
+
     statsChartInstance = new Chart(ctx, {
         type: production.type,
         data: {
@@ -1039,12 +1107,12 @@ function initStatsChart() {
                 label: production.unit === 'kW' ? 'Potencia promedio (kW)' : 'Producción (kWh)',
                 data: production.data,
                 borderColor: '#3b82f6',
-                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                backgroundColor: statsBgColor,
                 borderWidth: 2,
-                borderRadius: production.type === 'bar' ? 6 : 0,
-                maxBarThickness: 34,
-                categoryPercentage: 0.62,
-                barPercentage: 0.58,
+                borderRadius: production.type === 'bar' ? (isDia ? 4 : 6) : 0,
+                maxBarThickness: isDia ? 24 : 34,
+                categoryPercentage: isDia ? 0.82 : 0.62,
+                barPercentage: isDia ? 0.88 : 0.58,
                 tension: 0.35,
                 fill: production.type === 'line'
             }]
@@ -1052,17 +1120,48 @@ function initStatsChart() {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { position: 'top' } },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { color: statsTextColor }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    titleColor: '#fff',
+                    bodyColor: '#fff',
+                    padding: 10,
+                    callbacks: {
+                        title: (items) => {
+                            if (!items || !items.length) return '';
+                            const idx = items[0].dataIndex;
+                            if (production.fullLabels && production.fullLabels[idx]) {
+                                return production.fullLabels[idx];
+                            }
+                            return items[0].label || '';
+                        },
+                        label: (context) => ` ${production.unit === 'kW' ? 'Potencia' : 'Producción'}: ${context.parsed.y.toFixed(1)} ${production.unit}`
+                    }
+                }
+            },
             scales: {
                 x: {
                     ticks: {
                         autoSkip: true,
-                        maxTicksLimit: production.type === 'line' ? 8 : 12,
-                        maxRotation: production.type === 'line' ? 0 : 0,
-                        minRotation: 0
-                    }
+                        maxTicksLimit: production.type === 'line' ? 8 : (isDia ? 31 : 12),
+                        maxRotation: 0,
+                        minRotation: 0,
+                        color: statsTextColor,
+                        font: {
+                            size: isDia ? 10 : 11
+                        }
+                    },
+                    grid: { display: false }
                 },
-                y: { beginAtZero: true, grid: { color: '#f1f5f9' } }
+                y: {
+                    beginAtZero: true,
+                    grid: { color: statsGridColor },
+                    ticks: { color: statsTextColor }
+                }
             }
         }
     });
@@ -1392,10 +1491,63 @@ async function initDashboard() {
 }
 
 // ============================================================
+//  GESTIÓN DE TEMA OSCURO / CLARO
+// ============================================================
+
+function isDarkMode() {
+    return document.body.classList.contains('dark-mode');
+}
+
+function initTheme() {
+    const savedTheme = localStorage.getItem('crode_theme');
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const isDark = savedTheme === 'dark' || (!savedTheme && prefersDark);
+    setTheme(isDark ? 'dark' : 'light', false);
+}
+
+function setTheme(theme, updateStorage = true) {
+    const isDark = theme === 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+    document.body.classList.toggle('dark-mode', isDark);
+    if (updateStorage) {
+        localStorage.setItem('crode_theme', theme);
+    }
+    const toggleBtn = document.getElementById('themeToggleBtn');
+    if (toggleBtn) {
+        toggleBtn.innerHTML = isDark ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
+        toggleBtn.setAttribute('title', isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
+        toggleBtn.setAttribute('aria-label', isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
+    }
+    applyChartTheme();
+}
+
+function applyChartTheme() {
+    if (inverterChartInstance || weeklyChartInstance) {
+        initDashboardCharts();
+    }
+    const statsCanvas = document.getElementById('statsChart');
+    if (statsCanvas && statsCanvas.offsetParent !== null) {
+        initStatsChart();
+    }
+}
+
+document.getElementById('themeToggleBtn')?.addEventListener('click', () => {
+    const isDark = isDarkMode();
+    setTheme(isDark ? 'light' : 'dark', true);
+});
+
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    if (!localStorage.getItem('crode_theme')) {
+        setTheme(e.matches ? 'dark' : 'light', false);
+    }
+});
+
+// ============================================================
 //  VERIFICAR SESIÓN AL CARGAR
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async function() {
+    initTheme();
     if (checkSession()) {
         await initDashboard();
     }
