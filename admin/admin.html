@@ -41,6 +41,7 @@
                 <a href="#" data-section="administradores"><i class="fas fa-user-shield"></i> Admin</a>
                 <a href="#" data-section="invitados"><i class="fas fa-user-tag"></i> Clientes</a>
                 <a href="#" data-section="inversores"><i class="fas fa-microchip"></i> Inversores</a>
+                <a href="#" data-section="alertas"><i class="fas fa-bell"></i> Alertas <span class="nav-alert-badge" id="adminNavAlertBadge" style="display:none;">0</span></a>
                 <a href="#" data-section="logs"><i class="fas fa-history"></i> Logs</a>
                 <a href="#" data-section="sistema"><i class="fas fa-cog"></i> Sistema</a>
             </nav>
@@ -97,7 +98,7 @@
                             <span class="admin-kpi-value" id="totalInversores">0</span>
                         </div>
                     </div>
-                    <div class="admin-kpi-card">
+                    <div class="admin-kpi-card" style="cursor:pointer;" onclick="document.querySelector('[data-section=alertas]')?.click();" title="Ver centro de alertas">
                         <div class="admin-kpi-icon" style="background:#fef3c7;color:#92400e;">
                             <i class="fas fa-exclamation-triangle"></i>
                         </div>
@@ -273,6 +274,59 @@
                             </thead>
                             <tbody id="logsTableBody"></tbody>
                         </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- ALERTAS ADMIN -->
+            <!-- ============================================================ -->
+            <section id="alertas" class="page-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-bell"></i> Centro de Alertas Global</h2>
+                    <button class="btn-outline" id="btnRefreshAlertasAdmin"><i class="fas fa-sync-alt"></i> Actualizar</button>
+                </div>
+
+                <div class="tab-group" id="adminAlertTabs">
+                    <button class="tab-btn active" data-tab="admin-activas">Activas (<span id="adminAlertasActivasCount">0</span>)</button>
+                    <button class="tab-btn" data-tab="admin-historico">Histórico (<span id="adminAlertasHistoricoCount">0</span>)</button>
+                </div>
+
+                <div id="tab-admin-activas" class="tab-content active">
+                    <div class="table-card">
+                        <div class="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Inversor</th>
+                                        <th>Tipo</th>
+                                        <th>Mensaje</th>
+                                        <th>Fecha Detección</th>
+                                        <th>Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="adminAlertasActivasBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-admin-historico" class="tab-content">
+                    <div class="table-card">
+                        <div class="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Inversor</th>
+                                        <th>Tipo</th>
+                                        <th>Mensaje</th>
+                                        <th>Fecha Detección</th>
+                                        <th>Resolución</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="adminAlertasHistoricoBody"></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </section>

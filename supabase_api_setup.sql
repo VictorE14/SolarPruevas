@@ -72,6 +72,15 @@ create table if not exists public.alertas (
     fecha_resolucion timestamptz
 );
 
+-- Permisos RLS para la tabla alertas
+alter table public.alertas enable row level security;
+
+drop policy if exists "Permitir gestion de alertas" on public.alertas;
+create policy "Permitir gestion de alertas" on public.alertas
+    for all to public
+    using (true)
+    with check (true);
+
 create table if not exists public.logs_actividad (
     id uuid primary key default gen_random_uuid(),
     usuario_id uuid references public.usuarios(id) on delete set null,

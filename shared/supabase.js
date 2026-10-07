@@ -447,6 +447,129 @@
         return data;
     }
 
+    async function crearAlerta({ inversorId, tipo = 'Sistema', mensaje = 'Alerta detectada' }) {
+        if (!inversorId) return null;
+        const client = ensureClient();
+        
+        // B. Prevención de Spam / Deduplicación: Solo 1 alerta activa por inversor y por tipo
+        const { data: existing, error: checkError } = await client
+            .from('alertas')
+            .select('id,tipo,mensaje,fecha')
+            .eq('inversor_id', inversorId)
+            .eq('tipo', tipo)
+            .eq('resuelta', false)
+            .limit(1);
+
+        if (checkError) {
+            console.warn('⚠️ Error al verificar duplicado de alerta:', checkError);
+        } else if (existing && existing.length > 0) {
+            // Ya existe alerta activa: no duplicar
+            return existing[0];
+        }
+
+        const { data, error } = await client
+            .from('alertas')
+            .insert({
+                inversor_id: inversorId,
+                tipo: tipo,
+                mensaje: mensaje,
+                fecha: new Date().toISOString(),
+                resuelta: false
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error('❌ Error al crear alerta:', error);
+            throw error;
+        }
+        return data;
+    }
+
+    async function autoResolverAlerta(inversorId, tipo = null) {
+        if (!inversorId) return [];
+        const client = ensureClient();
+
+        // C. Auto-resolución: Marca resuelta por el sistema (resuelta_por = null)
+        let query = client
+            .from('alertas')
+            .update({
+                resuelta: true,
+                resuelta_por: null,
+                fecha_resolucion: new Date().toISOString()
+            })
+            .eq('inversor_id', inversorId)
+            .eq('resuelta', false);
+
+        if (tipo) {
+            query = query.eq('tipo', tipo);
+        }
+
+        const { data, error } = await query.select();
+        if (error) {
+            console.warn('⚠️ Error al auto-resolver alerta:', error);
+            return [];
+        }
+        return data || [];
+    }
+
+    async function evaluarAlertasInversor(inv, ultimaLectura = null) {
+        if (!inv || !inv.id) return;
+        try {
+            // A.1 Desconexión / Offline
+            const isOffline = inv.estado === 'offline' || (ultimaLectura && ultimaLectura.estado_operativo === 'offline');
+            if (isOffline) {
+                await crearAlerta({
+                    inversorId: inv.id,
+                    tipo: 'Conexión',
+                    mensaje: `El inversor ${inv.nombre || inv.id} no responde o está fuera de línea.`
+                });
+            } else if (inv.estado === 'online' && (!ultimaLectura || ultimaLectura.estado_operativo !== 'offline')) {
+                // C. Auto-resolución al recuperar conexión solo si no está offline
+                await autoResolverAlerta(inv.id, 'Conexión');
+            }
+
+            // A.2 Falla de API
+            if (inv.apiStatus === 'error') {
+                await crearAlerta({
+                    inversorId: inv.id,
+                    tipo: 'API',
+                    mensaje: `Error de sincronización API: ${inv.apiLastError || 'Sin respuesta del proveedor'}`
+                });
+            } else if (inv.apiStatus === 'connected') {
+                await autoResolverAlerta(inv.id, 'API');
+            }
+
+            // A.3 Rendimiento en horario solar (09:00 a 17:00 hora local)
+            const hour = new Date().getHours();
+            const isDaylightHours = hour >= 9 && hour <= 17;
+            const potencia = Number(inv.potencia ?? ultimaLectura?.potencia_ac ?? 0);
+            if (inv.estado === 'online' && isDaylightHours && potencia <= 0.01) {
+                await crearAlerta({
+                    inversorId: inv.id,
+                    tipo: 'Rendimiento',
+                    mensaje: `Generación nula (0.0 kW) detectada en horario de producción solar.`
+                });
+            } else if (potencia > 0.05) {
+                await autoResolverAlerta(inv.id, 'Rendimiento');
+            }
+
+            // A.4 Temperatura crítica
+            const temp = Number(ultimaLectura?.temperatura || 0);
+            if (temp >= 70) {
+                await crearAlerta({
+                    inversorId: inv.id,
+                    tipo: 'Temperatura',
+                    mensaje: `Temperatura crítica de operación: ${temp}°C (umbral > 70°C).`
+                });
+            } else if (temp > 0 && temp <= 65) {
+                await autoResolverAlerta(inv.id, 'Temperatura');
+            }
+        } catch (evalErr) {
+            console.warn(`Error al evaluar alertas para inversor ${inv.id}:`, evalErr);
+        }
+    }
+
     async function registrarLog(usuarioId, usuarioNombre, accion, descripcion, ip = null) {
         const client = ensureClient();
         const { data, error } = await client
@@ -501,6 +624,9 @@
         getAlertasActivas,
         getAllAlertas,
         resolverAlerta,
+        crearAlerta,
+        autoResolverAlerta,
+        evaluarAlertasInversor,
         registrarLog,
         getLogs,
         supabase

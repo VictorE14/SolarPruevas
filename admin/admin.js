@@ -15,6 +15,8 @@ if (bcryptLib && !window.bcrypt) {
 
 let tecnicos = [];
 let inversoresAdmin = [];
+let alertasAdminActivas = [];
+let alertasAdminHistorico = [];
 let inversorAssignmentCounts = {};
 let inversorAssignments = {};
 let usuarioAdmin = null;
@@ -291,11 +293,21 @@ function renderAdminKPIs() {
 
     document.getElementById('totalTecnicos').textContent = total;
     document.getElementById('totalInversores').textContent = inversoresAdmin.length;
-    document.getElementById('totalAlertas').textContent = '0';
+    document.getElementById('totalAlertas').textContent = alertasAdminActivas.length;
     document.getElementById('totalInactivos').textContent = inactivos;
     document.getElementById('sysTotalTecnicos').value = total;
     document.getElementById('sysTotalInversores').value = inversoresAdmin.length;
-    document.getElementById('sysTotalAlertas').value = '0';
+    document.getElementById('sysTotalAlertas').value = alertasAdminActivas.length;
+
+    const navBadge = document.getElementById('adminNavAlertBadge');
+    if (navBadge) {
+        if (alertasAdminActivas.length > 0) {
+            navBadge.textContent = alertasAdminActivas.length;
+            navBadge.style.display = 'inline-block';
+        } else {
+            navBadge.style.display = 'none';
+        }
+    }
 }
 
 // ============================================================
@@ -405,6 +417,110 @@ async function loadLogs() {
     logsActividad = await db.getLogs(100);
     renderLogs();
 }
+
+// ============================================================
+//  ADMIN - ALERTAS GLOBALES
+// ============================================================
+
+function getAdminAlertTagHtml(tipo) {
+    const raw = String(tipo || 'Sistema').trim();
+    const normalized = raw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    let icon = 'fa-exclamation-circle';
+    let cls = 'tag-sistema';
+
+    if (normalized.includes('conex') || normalized.includes('offline')) {
+        icon = 'fa-network-wired';
+        cls = 'tag-conexion';
+    } else if (normalized.includes('api')) {
+        icon = 'fa-server';
+        cls = 'tag-api';
+    } else if (normalized.includes('rend') || normalized.includes('potencia')) {
+        icon = 'fa-chart-line';
+        cls = 'tag-rendimiento';
+    } else if (normalized.includes('temp')) {
+        icon = 'fa-temperature-high';
+        cls = 'tag-temperatura';
+    }
+
+    return `<span class="alert-tag ${cls}"><i class="fas ${icon}"></i> ${escapeHtml(raw)}</span>`;
+}
+
+function getAdminInverterName(inversorId) {
+    const found = inversoresAdmin.find(inv => inv.id === inversorId);
+    return found ? found.nombre : (inversorId || 'Inversor desconocido');
+}
+
+function renderAdminAlertas() {
+    const activeBody = document.getElementById('adminAlertasActivasBody');
+    const historyBody = document.getElementById('adminAlertasHistoricoBody');
+    const countActiveEl = document.getElementById('adminAlertasActivasCount');
+    const countHistoryEl = document.getElementById('adminAlertasHistoricoCount');
+
+    if (countActiveEl) countActiveEl.textContent = alertasAdminActivas.length;
+    if (countHistoryEl) countHistoryEl.textContent = alertasAdminHistorico.length;
+
+    const renderRow = (alerta, isActive) => {
+        const dateStr = alerta.fecha ? new Date(alerta.fecha).toLocaleString('es-MX') : 'Sin fecha';
+        const resolutionNote = alerta.resuelta_por
+            ? '<span class="status-badge" style="color:#0284c7;"><span class="dot" style="background:#0284c7;"></span> Resuelta manual</span>'
+            : '<span class="status-badge" style="color:#16a34a;"><span class="dot online"></span> Auto-resuelta (Sistema)</span>';
+
+        return `
+            <tr>
+                <td><strong>${escapeHtml(getAdminInverterName(alerta.inversor_id))}</strong></td>
+                <td>${getAdminAlertTagHtml(alerta.tipo)}</td>
+                <td>${escapeHtml(alerta.mensaje || 'Sin descripción')}</td>
+                <td><small style="color:#64748b;">${escapeHtml(dateStr)}</small></td>
+                ${isActive
+                    ? `<td><button class="btn-outline" style="padding:4px 10px;font-size:12px;" onclick="resolverAlertaAdminUI('${escapeHtml(alerta.id)}')"><i class="fas fa-check"></i> Resolver</button></td>`
+                    : `<td>${resolutionNote}</td>`}
+            </tr>`;
+    };
+
+    if (activeBody) {
+        activeBody.innerHTML = alertasAdminActivas.length
+            ? alertasAdminActivas.map(a => renderRow(a, true)).join('')
+            : '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:24px;"><i class="fas fa-check-circle" style="color:#16a34a;margin-right:6px;"></i> No hay alertas activas en el sistema.</td></tr>';
+    }
+
+    if (historyBody) {
+        historyBody.innerHTML = alertasAdminHistorico.length
+            ? alertasAdminHistorico.map(a => renderRow(a, false)).join('')
+            : '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:24px;">No hay alertas en el histórico.</td></tr>';
+    }
+}
+
+async function loadAdminAlertas() {
+    if (!db || typeof db.getAlertasActivas !== 'function' || typeof db.getAllAlertas !== 'function') {
+        return;
+    }
+    try {
+        const [active, history] = await Promise.all([
+            db.getAlertasActivas(),
+            db.getAllAlertas()
+        ]);
+        alertasAdminActivas = (active || []).filter(a => !a.resuelta);
+        alertasAdminHistorico = (history || []).filter(a => a.resuelta);
+
+        renderAdminKPIs();
+        renderAdminAlertas();
+    } catch (e) {
+        console.error('Error al cargar alertas en admin:', e);
+    }
+}
+
+window.resolverAlertaAdminUI = async function(id) {
+    if (confirm('¿Marcar esta alerta como resuelta?')) {
+        try {
+            await db.resolverAlerta(id, usuarioAdmin?.id);
+            showToast('✅ Alerta resuelta correctamente', 'success');
+            await loadAdminAlertas();
+        } catch (error) {
+            console.error('❌ Error al resolver alerta:', error);
+            showToast('Error al resolver alerta', 'error');
+        }
+    }
+};
 
 // ============================================================
 //  RENDER ADMIN INVERSORES - CON CAMBIO DE ESTADO
@@ -642,8 +758,28 @@ async function cambiarEstadoInversor(id, nuevoEstado) {
         const inv = inversoresAdmin.find(i => i.id === id);
         if (inv) inv.estado = nuevoEstado;
         await db.registrarLog(usuarioAdmin?.id, usuarioAdmin?.nombre, 'Cambió estado de inversor', `${inv?.nombre || id} → ${nuevoEstado}`);
+
+        // GESTIÓN INMEDIATA DE ALERTA AL APAGAR / ENCENDER MANUALMENTE:
+        if (nuevoEstado === 'offline') {
+            if (typeof db.crearAlerta === 'function') {
+                await db.crearAlerta({
+                    inversorId: id,
+                    tipo: 'Conexión',
+                    mensaje: `El inversor ${inv?.nombre || id} fue reportado fuera de línea.`
+                });
+            }
+        } else if (nuevoEstado === 'online') {
+            if (typeof db.autoResolverAlerta === 'function') {
+                await db.autoResolverAlerta(id, 'Conexión');
+            }
+        }
+
+        // Recargar alertas del panel inmediatamente
+        await loadAdminAlertas();
+
         renderAdminInversores();
         renderAdminKPIs();
+        showToast(`Estado de ${inv?.nombre || id}: ${nuevoEstado}`, 'info');
     } catch (error) {
         console.error('❌ Error al cambiar estado:', error);
         alert('Error al cambiar el estado del inversor');
@@ -1329,6 +1465,24 @@ document.getElementById('filterBrandAdmin')?.addEventListener('change', renderAd
 document.getElementById('searchLogs')?.addEventListener('input', renderLogs);
 document.getElementById('filterLogAction')?.addEventListener('change', renderLogs);
 
+document.getElementById('btnRefreshAlertasAdmin')?.addEventListener('click', async () => {
+    showToast('Actualizando alertas...', 'info');
+    await loadAdminAlertas();
+    showToast('Alertas actualizadas', 'success');
+});
+
+// Tabs de Alertas en Admin
+document.querySelectorAll('#adminAlertTabs .tab-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('#adminAlertTabs .tab-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        const tabId = this.dataset.tab;
+        document.querySelectorAll('#alertas .tab-content').forEach(c => c.classList.remove('active'));
+        const target = document.getElementById(`tab-${tabId}`);
+        if (target) target.classList.add('active');
+    });
+});
+
 document.querySelectorAll('.nav-menu a[data-section]').forEach(link => {
     link.addEventListener('click', function(e) {
         e.preventDefault();
@@ -1392,6 +1546,7 @@ async function initAdmin() {
         renderAdminInversores();
         renderAdminApiStatus();
         await loadLogs();
+        await loadAdminAlertas();
 
         if (adminApiIntervalId) clearInterval(adminApiIntervalId);
         console.log('✅ Panel de Administración listo - TODOS los usuarios visibles');
@@ -1504,6 +1659,7 @@ window.refreshData = async function() {
         await loadInversorAssignmentCounts();
 
         // 4. Renderizar todo
+        await loadAdminAlertas();
         renderAdminKPIs();
         renderTecnicos();
         renderAdminInversores();

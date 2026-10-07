@@ -191,9 +191,14 @@ async function loadInverters() {
 
                 const ultima = await db.getUltimaLectura(inv.id);
                 if (ultima) {
-                    inv.potencia = Number(ultima.potencia_ac) || 0;
+                    // Si el inversor está marcado como offline en BD, conservar offline y potencia 0
+                    if (inv.estado === 'offline') {
+                        inv.potencia = 0;
+                    } else {
+                        inv.potencia = Number(ultima.potencia_ac) || 0;
+                        inv.estado = ultima.estado_operativo || inv.estado;
+                    }
                     inv.energiaHoy = Number(ultima.energia_dia) || 0;
-                    inv.estado = ultima.estado_operativo || inv.estado;
 
                     const lastReadingDate = getMexicoDateKey(ultima.timestamp);
                     if (lastReadingDate === currentDateKey && inv.estado === 'offline') {
@@ -203,6 +208,11 @@ async function loadInverters() {
                         inverterStoppedForDate.delete(inv.id);
                         inverterStoppedAt.delete(inv.id);
                     }
+                }
+
+                // Evaluar reglas de alertas automáticas (A, B, C)
+                if (typeof db.evaluarAlertasInversor === 'function') {
+                    await db.evaluarAlertasInversor(inv, ultima);
                 }
 
                 if (typeof db.getLecturasByInversor === 'function') {
@@ -368,6 +378,29 @@ function escapeAlertText(value) {
     }[character]));
 }
 
+function getAlertTagHtml(tipo) {
+    const raw = String(tipo || 'Sistema').trim();
+    const normalized = raw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    let icon = 'fa-exclamation-circle';
+    let cls = 'tag-sistema';
+
+    if (normalized.includes('conex') || normalized.includes('offline')) {
+        icon = 'fa-network-wired';
+        cls = 'tag-conexion';
+    } else if (normalized.includes('api')) {
+        icon = 'fa-server';
+        cls = 'tag-api';
+    } else if (normalized.includes('rend') || normalized.includes('potencia')) {
+        icon = 'fa-chart-line';
+        cls = 'tag-rendimiento';
+    } else if (normalized.includes('temp')) {
+        icon = 'fa-temperature-high';
+        cls = 'tag-temperatura';
+    }
+
+    return `<span class="alert-tag ${cls}"><i class="fas ${icon}"></i> ${escapeAlertText(raw)}</span>`;
+}
+
 function getInverterName(inverterId) {
     return inverters.find(inverter => inverter.id === inverterId)?.nombre || inverterId || 'Inversor desconocido';
 }
@@ -375,40 +408,165 @@ function getInverterName(inverterId) {
 function renderDashboardAlerts() {
     const list = document.getElementById('alertsList');
     if (!list) return;
-    list.innerHTML = alertasActivas.length
-        ? alertasActivas.slice(0, 5).map(alerta => `
-            <li>
-                <strong>${escapeAlertText(getInverterName(alerta.inversor_id))}</strong>
-                <span>${escapeAlertText(alerta.mensaje || alerta.tipo || 'Alerta activa')}</span>
-            </li>`).join('')
-        : '<li style="color:#64748b;">No hay alertas activas.</li>';
+
+    if (!alertasActivas.length) {
+        list.innerHTML = `
+            <li class="success" style="padding:12px 14px;">
+                <i class="fas fa-check-circle" style="color:#16a34a;font-size:16px;"></i>
+                <div style="display:flex;flex-direction:column;gap:2px;">
+                    <strong style="color:#15803d;">Planta operando con normalidad</strong>
+                    <span style="color:#4b5563;font-size:12px;">Todos los inversores reportan sincronización sin incidencias activas.</span>
+                </div>
+            </li>`;
+        return;
+    }
+
+    list.innerHTML = alertasActivas.slice(0, 5).map(alerta => {
+        const isCritical = ['conexión', 'temperatura'].some(c => (alerta.tipo || '').toLowerCase().includes(c));
+        const timeStr = alerta.fecha ? new Date(alerta.fecha).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '';
+        return `
+            <li class="${isCritical ? 'danger' : ''}" style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:10px 14px;">
+                <div style="display:flex;flex-direction:column;gap:4px;flex:1;">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <strong>${escapeAlertText(getInverterName(alerta.inversor_id))}</strong>
+                        ${getAlertTagHtml(alerta.tipo)}
+                    </div>
+                    <span style="color:#334155;font-size:12.5px;">${escapeAlertText(alerta.mensaje || alerta.tipo || 'Alerta activa')}</span>
+                </div>
+                <span style="font-size:11px;color:#64748b;white-space:nowrap;margin-top:2px;">${timeStr}</span>
+            </li>`;
+    }).join('');
 }
 
 function renderAlertas() {
     const activeBody = document.getElementById('alertasActivasBody');
     const historyBody = document.getElementById('alertasHistoricoBody');
-    const renderRow = (alerta, active) => `
-        <tr>
-            <td>${escapeAlertText(getInverterName(alerta.inversor_id))}</td>
-            <td>${escapeAlertText(alerta.tipo || 'Sistema')}</td>
-            <td>${escapeAlertText(alerta.mensaje || 'Sin descripción')}</td>
-            <td>${escapeAlertText(alerta.fecha ? new Date(alerta.fecha).toLocaleString('es-MX') : 'Sin fecha')}</td>
-            ${active
-                ? `<td><button class="btn-outline" onclick="resolverAlertaUI('${escapeAlertText(alerta.id)}')">Resolver</button></td>`
-                : `<td>${alerta.resuelta ? 'Resuelta' : 'Activa'}</td>`}
-        </tr>`;
+
+    const renderRow = (alerta, active) => {
+        const dateFormatted = alerta.fecha ? new Date(alerta.fecha).toLocaleString('es-MX') : 'Sin fecha';
+        const resolutionNote = alerta.resuelta_por 
+            ? '<span class="status-badge" style="color:#0284c7;"><span class="dot" style="background:#0284c7;"></span> Resuelta manual (Técnico)</span>'
+            : '<span class="status-badge" style="color:#16a34a;"><span class="dot online"></span> Auto-resuelta (Sistema)</span>';
+
+        return `
+            <tr>
+                <td><strong>${escapeAlertText(getInverterName(alerta.inversor_id))}</strong></td>
+                <td>${getAlertTagHtml(alerta.tipo)}</td>
+                <td>${escapeAlertText(alerta.mensaje || 'Sin descripción')}</td>
+                <td><small style="color:#64748b;">${escapeAlertText(dateFormatted)}</small></td>
+                ${active
+                    ? `<td><button class="btn-outline" style="padding:4px 10px;font-size:12px;" onclick="resolverAlertaUI('${escapeAlertText(alerta.id)}')"><i class="fas fa-check"></i> Resolver</button></td>`
+                    : `<td>${resolutionNote}</td>`}
+            </tr>`;
+    };
 
     if (activeBody) {
         activeBody.innerHTML = alertasActivas.length
             ? alertasActivas.map(alerta => renderRow(alerta, true)).join('')
-            : '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:20px;">No hay alertas activas.</td></tr>';
+            : '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:26px;"><i class="fas fa-check-circle" style="color:#16a34a;margin-right:6px;"></i> No hay alertas activas.</td></tr>';
     }
     if (historyBody) {
         historyBody.innerHTML = alertasHistorico.length
             ? alertasHistorico.map(alerta => renderRow(alerta, false)).join('')
-            : '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:20px;">No hay alertas históricas.</td></tr>';
+            : '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:26px;">No hay alertas en el histórico.</td></tr>';
     }
 }
+
+// ============================================================
+//  REGLAS DE MONITOREO (Configurables)
+// ============================================================
+
+const DEFAULT_MONITORING_RULES = [
+    {
+        id: 'rule-offline',
+        nombre: 'Inversor Fuera de Línea',
+        condicion: 'Estado == "offline" o sin telemetría',
+        accion: 'Crear Alerta [Conexión]',
+        estado: 'Activa'
+    },
+    {
+        id: 'rule-api',
+        nombre: 'Falla Sincronización API',
+        condicion: 'api_status == "error" o timeout de red',
+        accion: 'Crear Alerta [API]',
+        estado: 'Activa'
+    },
+    {
+        id: 'rule-potencia',
+        nombre: 'Generación Nula Diurna',
+        condicion: 'Horario solar (09:00 - 17:00) y Potencia <= 0.01 kW',
+        accion: 'Crear Alerta [Rendimiento]',
+        estado: 'Activa'
+    },
+    {
+        id: 'rule-temperatura',
+        nombre: 'Sobrecalentamiento Crítico',
+        condicion: 'Temperatura interna >= 70 °C',
+        accion: 'Crear Alerta [Temperatura]',
+        estado: 'Activa'
+    },
+    {
+        id: 'rule-autoresolve',
+        nombre: 'Auto-resolución al Restablecer',
+        condicion: 'Inversor recupera estado "online" y genera energía',
+        accion: 'Cerrar Alerta activa automáticamente',
+        estado: 'Activa'
+    }
+];
+
+function getStoredRules() {
+    try {
+        const stored = localStorage.getItem('crode_monitoring_rules');
+        return stored ? JSON.parse(stored) : DEFAULT_MONITORING_RULES;
+    } catch {
+        return DEFAULT_MONITORING_RULES;
+    }
+}
+
+function saveStoredRules(rules) {
+    try {
+        localStorage.setItem('crode_monitoring_rules', JSON.stringify(rules));
+    } catch (e) {
+        console.warn('Error al guardar reglas en localStorage:', e);
+    }
+}
+
+function renderReglas() {
+    const tbody = document.getElementById('reglasBody');
+    if (!tbody) return;
+
+    const rules = getStoredRules();
+    tbody.innerHTML = rules.map((r, idx) => {
+        const isActive = r.estado === 'Activa';
+        return `
+            <tr>
+                <td><strong>#${idx + 1}</strong></td>
+                <td><strong>${escapeAlertText(r.nombre)}</strong></td>
+                <td><code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:12px;">${escapeAlertText(r.condicion)}</code></td>
+                <td><span class="status-badge" style="color:#2563eb;">${escapeAlertText(r.accion)}</span></td>
+                <td>
+                    <span class="status-badge ${isActive ? 'online' : 'offline'}">
+                        <span class="dot ${isActive ? 'online' : 'offline'}"></span> ${r.estado}
+                    </span>
+                </td>
+                <td>
+                    <button class="btn-outline" style="padding:3px 8px;font-size:11px;" onclick="window.toggleReglaUI('${escapeAlertText(r.id)}')">
+                        ${isActive ? '<i class="fas fa-pause"></i> Pausar' : '<i class="fas fa-play"></i> Activar'}
+                    </button>
+                </td>
+            </tr>`;
+    }).join('');
+}
+
+window.toggleReglaUI = function(ruleId) {
+    const rules = getStoredRules();
+    const rule = rules.find(r => r.id === ruleId);
+    if (rule) {
+        rule.estado = rule.estado === 'Activa' ? 'Pausada' : 'Activa';
+        saveStoredRules(rules);
+        renderReglas();
+    }
+};
 
 async function loadAlertas() {
     if (!db || typeof db.getAlertasActivas !== 'function' || typeof db.getAllAlertas !== 'function') {
@@ -423,10 +581,13 @@ async function loadAlertas() {
             : db.getAllAlertas(usuarioActual?.id)
     ]);
     const assignedIds = new Set(inverters.map(inverter => inverter.id));
-    alertasActivas = (active || []).filter(alerta => assignedIds.has(alerta.inversor_id));
-    alertasHistorico = (history || []).filter(alerta => assignedIds.has(alerta.inversor_id));
+    alertasActivas = (active || []).filter(alerta => assignedIds.has(alerta.inversor_id) && !alerta.resuelta);
+    // Histórico: solo alertas resueltas para diferenciar claramente de las activas
+    alertasHistorico = (history || []).filter(alerta => assignedIds.has(alerta.inversor_id) && alerta.resuelta);
+
     renderAlertas();
     renderDashboardAlerts();
+    renderReglas();
 }
 
 // ============================================================
@@ -1407,7 +1568,24 @@ document.getElementById('btnExport')?.addEventListener('click', () => {
 });
 
 document.getElementById('btnAddRule')?.addEventListener('click', () => {
-    alert('🛠️ Abrir formulario para nueva regla (simulación).');
+    const nombre = prompt('Nombre de la nueva regla de monitoreo:');
+    if (!nombre || !nombre.trim()) return;
+    const condicion = prompt('Condición o umbral de disparo (ej. "Potencia < 1 kW"):', 'Potencia < 1 kW en hora pico');
+    if (!condicion) return;
+    const accion = prompt('Acción a ejecutar (ej. "Crear Alerta [Rendimiento]"):', 'Crear Alerta [Rendimiento]');
+    if (!accion) return;
+
+    const rules = getStoredRules();
+    rules.push({
+        id: 'rule-' + Date.now(),
+        nombre: nombre.trim(),
+        condicion: condicion.trim(),
+        accion: accion.trim(),
+        estado: 'Activa'
+    });
+    saveStoredRules(rules);
+    renderReglas();
+    alert(`✅ Regla "${nombre.trim()}" agregada correctamente.`);
 });
 
 // ============================================================

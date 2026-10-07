@@ -378,6 +378,35 @@ Deno.serve(async (request) => {
       throw new Error(`No se pudo actualizar el estado: ${updateError.message}`);
     }
 
+    // ============================================================
+    // GESTIÓN DE ALERTAS (A: Criterios, B: Deduplicación, C: Auto-resolución)
+    // ============================================================
+    await syncAlert(
+      admin,
+      inverter.id,
+      'Conexión',
+      !online,
+      `Inversor ${inverter.nombre} reportado fuera de línea o sin conexión.`
+    );
+
+    // Auto-resolver alerta de API porque la sincronización fue exitosa
+    await syncAlert(admin, inverter.id, 'API', false, '');
+
+    // Rendimiento: evaluar generación nula durante horas de sol en México (14:00 - 23:00 UTC)
+    const currentUtcHour = new Date().getUTCHours();
+    const isSolarTime = currentUtcHour >= 14 && currentUtcHour <= 23;
+    if (online && isSolarTime) {
+      await syncAlert(
+        admin,
+        inverter.id,
+        'Rendimiento',
+        powerKw <= 0.01,
+        `Generación nula (0.0 kW) detectada en horario de radiación solar para ${inverter.nombre}.`
+      );
+    } else if (powerKw > 0.05) {
+      await syncAlert(admin, inverter.id, 'Rendimiento', false, '');
+    }
+
     return response({
       ok: true,
       inverterId: inverter.id,
@@ -399,6 +428,15 @@ Deno.serve(async (request) => {
         api_last_sync: new Date().toISOString(),
         api_last_error: message,
       }).eq('id', inverter.id);
+
+      // Disparar alerta de falla de API con deduplicación
+      await syncAlert(
+        admin,
+        inverter.id,
+        'API',
+        true,
+        `Falla de comunicación con API para ${inverter.nombre}: ${message}`
+      );
     } catch (updateError) {
       console.error('growatt-sync update error:', updateError);
     }
@@ -406,3 +444,49 @@ Deno.serve(async (request) => {
     return response({ ok: false, error: message }, 502);
   }
 });
+
+async function syncAlert(
+  admin: any,
+  inverterId: string,
+  tipo: string,
+  conditionActive: boolean,
+  message: string
+) {
+  try {
+    if (conditionActive) {
+      // Deduplicación (B): Verificar si ya existe alerta activa para no spamear
+      const { data: existing } = await admin
+        .from('alertas')
+        .select('id')
+        .eq('inversor_id', inverterId)
+        .eq('tipo', tipo)
+        .eq('resuelta', false)
+        .limit(1);
+
+      if (!existing || existing.length === 0) {
+        await admin.from('alertas').insert({
+          inversor_id: inverterId,
+          tipo,
+          mensaje: message,
+          fecha: new Date().toISOString(),
+          resuelta: false,
+        });
+      }
+    } else {
+      // Auto-resolución (C): Cuando la condición se normaliza, cerrar alerta automáticamente
+      await admin
+        .from('alertas')
+        .update({
+          resuelta: true,
+          resuelta_por: null,
+          fecha_resolucion: new Date().toISOString(),
+        })
+        .eq('inversor_id', inverterId)
+        .eq('tipo', tipo)
+        .eq('resuelta', false);
+    }
+  } catch (err) {
+    console.warn(`Error al gestionar alerta [${tipo}] para ${inverterId}:`, err);
+  }
+}
+
