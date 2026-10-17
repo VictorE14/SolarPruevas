@@ -605,7 +605,7 @@ function renderAdminApiStatus() {
         const apiStatus = inverter.api_status || 'pending';
         const status = apiStatus === 'connected' ? 'Conectada' : apiStatus === 'error' ? 'Error' : 'Pendiente';
         const color = apiStatus === 'connected' ? '#16a34a' : apiStatus === 'error' ? '#dc2626' : '#64748b';
-        const canDiagnose = inverter.marca?.toLowerCase() === 'growatt';
+        const canDiagnose = ['growatt', 'huawei'].includes(inverter.marca?.toLowerCase());
         const errorDetail = apiStatus === 'error' && inverter.api_last_error
             ? `<div style="font-size:11px;color:#dc2626;font-weight:normal;margin-top:3px;max-width:220px;line-height:1.2;" title="${escapeHtml(inverter.api_last_error)}">${escapeHtml(inverter.api_last_error)}</div>`
             : '';
@@ -633,11 +633,11 @@ function formatAdminSyncDate(value) {
 
 function getGrowattErrorMessage(error) {
     const message = error instanceof Error ? error.message : String(error || 'Error desconocido');
-    if (message.includes('error_frequently_access') || message.includes('limitó temporalmente')) {
-        return 'Growatt bloqueó temporalmente las consultas por exceso de frecuencia. Espera unos minutos antes de volver a diagnosticar.';
+    if (message.includes('error_frequently_access') || message.includes('limitó temporalmente') || message.includes('ACCESS_FREQUENCY_IS_TOO_HIGH')) {
+        return 'El servidor bloqueó temporalmente las consultas por exceso de frecuencia. Espera unos minutos antes de volver a diagnosticar.';
     }
-    if (message.includes('error_permission_denied')) {
-        return 'Growatt rechazó el token API. Reemplázalo por un token vigente con acceso a esta cuenta y a la planta configurada.';
+    if (message.includes('error_permission_denied') || message.includes('user_or_value_invalid')) {
+        return 'Rechazó las credenciales API. Verifica el usuario/contraseña o token con acceso a esta cuenta y planta.';
     }
     return message;
 }
@@ -652,10 +652,19 @@ async function diagnoseAdminApi(id) {
     }
 
     try {
-        if (typeof db.sincronizarGrowatt !== 'function') {
-            throw new Error('La sincronización Growatt no está disponible.');
+        let result;
+        const marca = inverter.marca?.toLowerCase();
+        if (marca === 'huawei') {
+            if (typeof db.sincronizarHuawei !== 'function') {
+                throw new Error('La sincronización Huawei no está disponible.');
+            }
+            result = await db.sincronizarHuawei(id);
+        } else {
+            if (typeof db.sincronizarGrowatt !== 'function') {
+                throw new Error('La sincronización Growatt no está disponible.');
+            }
+            result = await db.sincronizarGrowatt(id);
         }
-        const result = await db.sincronizarGrowatt(id);
         inversoresAdmin = await db.getAllInversores();
         renderAdminApiStatus();
         renderAdminInversores();
@@ -663,7 +672,7 @@ async function diagnoseAdminApi(id) {
         alert(`"${inverter.nombre}" se sincronizó correctamente.${power}`);
     } catch (error) {
         const errorMessage = getGrowattErrorMessage(error);
-        if (errorMessage.includes('bloqueó temporalmente')) {
+        if (errorMessage.includes('bloqueó temporalmente') || errorMessage.includes('limitó temporalmente')) {
             adminApiRetryState.set(id, {
                 failures: 1,
                 nextAttemptAt: Date.now() + ADMIN_API_RATE_LIMIT_RETRY_MS
@@ -681,7 +690,7 @@ async function diagnoseAdminApi(id) {
 }
 
 async function syncAdminApisAutomatically() {
-    if (adminApiSyncInProgress || !db || typeof db.sincronizarGrowatt !== 'function') return false;
+    if (adminApiSyncInProgress || !db || (typeof db.sincronizarGrowatt !== 'function' && typeof db.sincronizarHuawei !== 'function')) return false;
     adminApiSyncInProgress = true;
 
     try {
@@ -697,7 +706,14 @@ async function runAdminApiSync() {
 
     const now = Date.now();
     const readyInverters = inversoresAdmin.filter(item => {
-        if (item.marca?.toLowerCase() !== 'growatt' || !item.api_token) return false;
+        const marca = item.marca?.toLowerCase();
+        if (marca === 'growatt') {
+            if (!item.api_token) return false;
+        } else if (marca === 'huawei') {
+            if (!item.plant_id && !item.huawei_plant_code) return false;
+        } else {
+            return false;
+        }
         const retry = adminApiRetryState.get(item.id);
         return !retry || now >= retry.nextAttemptAt;
     });
@@ -705,7 +721,11 @@ async function runAdminApiSync() {
     for (const inverter of readyInverters) {
         const wasInError = inverter.api_status === 'error';
         try {
-            await db.sincronizarGrowatt(inverter.id);
+            if (inverter.marca?.toLowerCase() === 'huawei') {
+                await db.sincronizarHuawei(inverter.id);
+            } else {
+                await db.sincronizarGrowatt(inverter.id);
+            }
             adminApiRetryState.delete(inverter.id);
             if (wasInError) {
                 recovered = true;
@@ -1037,7 +1057,10 @@ function abrirModalInverterAdmin(inversor = null) {
         ).join('');
 
     const marcaSelect = document.getElementById('invAdminMarca');
-    const assistant = document.getElementById('growattPlantAssistant');
+    const isGrowatt = marcaSelect?.value?.toLowerCase() === 'growatt';
+    const isHuawei = marcaSelect?.value?.toLowerCase() === 'huawei';
+
+    const growattAssistant = document.getElementById('growattPlantAssistant');
     const plantSelect = document.getElementById('invAdminPlantSelect');
     const devicesInfo = document.getElementById('invAdminDevicesInfo');
     if (plantSelect) {
@@ -1048,8 +1071,30 @@ function abrirModalInverterAdmin(inversor = null) {
         devicesInfo.innerHTML = '';
         devicesInfo.style.display = 'none';
     }
-    if (assistant && marcaSelect) {
-        assistant.style.display = marcaSelect.value.toLowerCase() === 'growatt' ? 'block' : 'none';
+    if (growattAssistant) {
+        growattAssistant.style.display = isGrowatt ? 'block' : 'none';
+    }
+
+    const huaweiAssistant = document.getElementById('huaweiPlantAssistant');
+    const plantSelectHuawei = document.getElementById('invAdminPlantSelectHuawei');
+    const devicesInfoHuawei = document.getElementById('invAdminDevicesInfoHuawei');
+    if (plantSelectHuawei) {
+        plantSelectHuawei.innerHTML = '';
+        plantSelectHuawei.style.display = 'none';
+    }
+    if (devicesInfoHuawei) {
+        devicesInfoHuawei.innerHTML = '';
+        devicesInfoHuawei.style.display = 'none';
+    }
+    if (huaweiAssistant) {
+        huaweiAssistant.style.display = isHuawei ? 'block' : 'none';
+    }
+
+    if (!inversor && isHuawei) {
+        const urlInput = document.getElementById('invAdminApiUrl');
+        const userInput = document.getElementById('invAdminApiUser');
+        if (!urlInput.value) urlInput.value = 'https://la5.fusionsolar.huawei.com';
+        if (!userInput.value) userInput.value = 'brima_api';
     }
 
     modal.classList.add('open');
@@ -1246,6 +1291,15 @@ document.getElementById('saveInverterAdmin')?.addEventListener('click', async fu
         }
     }
 
+    if (marca.toLowerCase() === 'huawei') {
+        if (!apiConfig.api_url) apiConfig.api_url = 'https://la5.fusionsolar.huawei.com';
+        if (!apiConfig.api_username) apiConfig.api_username = 'brima_api';
+        if (!apiConfig.plant_id) {
+            alert('Para conectar un inversor Huawei debes indicar o seleccionar el código de la planta (ej. NE=33862444).');
+            return;
+        }
+    }
+
     const connectionChanged = Boolean(existingInverter && (
         apiConfig.api_url !== (existingInverter.api_url || '') ||
         apiConfig.plant_id !== (existingInverter.plant_id || '') ||
@@ -1357,9 +1411,20 @@ document.getElementById('modalInverterAdmin')?.addEventListener('click', (e) => 
 });
 
 document.getElementById('invAdminMarca')?.addEventListener('change', function() {
-    const assistant = document.getElementById('growattPlantAssistant');
-    if (assistant) {
-        assistant.style.display = this.value.toLowerCase() === 'growatt' ? 'block' : 'none';
+    const isGrowatt = this.value.toLowerCase() === 'growatt';
+    const isHuawei = this.value.toLowerCase() === 'huawei';
+
+    const growattAssistant = document.getElementById('growattPlantAssistant');
+    if (growattAssistant) growattAssistant.style.display = isGrowatt ? 'block' : 'none';
+
+    const huaweiAssistant = document.getElementById('huaweiPlantAssistant');
+    if (huaweiAssistant) huaweiAssistant.style.display = isHuawei ? 'block' : 'none';
+
+    if (isHuawei) {
+        const urlInput = document.getElementById('invAdminApiUrl');
+        const userInput = document.getElementById('invAdminApiUser');
+        if (!urlInput.value.trim()) urlInput.value = 'https://la5.fusionsolar.huawei.com';
+        if (!userInput.value.trim()) userInput.value = 'brima_api';
     }
 });
 
@@ -1456,6 +1521,122 @@ document.getElementById('invAdminPlantSelect')?.addEventListener('change', async
         console.warn('No se pudieron autocompletar dispositivos:', e);
         if (devicesInfo) {
             devicesInfo.innerHTML = `✅ ID de planta asignado: ${selectedPlantId}`;
+        }
+    }
+});
+
+let cargandoPlantasHuawei = false;
+document.getElementById('btnCargarPlantasHuawei')?.addEventListener('click', async function() {
+    if (cargandoPlantasHuawei) return;
+    const btn = this;
+    const plantSelect = document.getElementById('invAdminPlantSelectHuawei');
+    const devicesInfo = document.getElementById('invAdminDevicesInfoHuawei');
+    const currentPlantCode = document.getElementById('invAdminPlantId').value.trim();
+    const apiUrl = document.getElementById('invAdminApiUrl').value.trim();
+    const apiUser = document.getElementById('invAdminApiUser').value.trim();
+    const apiPassword = document.getElementById('invAdminApiPassword').value;
+
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cargando...';
+    cargandoPlantasHuawei = true;
+
+    try {
+        if (typeof db.getHuaweiPlants !== 'function') {
+            throw new Error('La función para obtener plantas de Huawei no está disponible.');
+        }
+        const plants = await db.getHuaweiPlants(apiUser, apiPassword, apiUrl);
+        if (!plants || !plants.length) {
+            throw new Error('No se encontraron plantas en esta cuenta de Huawei.');
+        }
+
+        plantSelect.innerHTML = `<option value="">-- Selecciona tu planta (${plants.length} encontradas) --</option>` +
+            plants.map(p => {
+                const isSelected = p.plantCode === currentPlantCode ? 'selected' : '';
+                return `<option value="${escapeHtml(p.plantCode)}" data-name="${escapeHtml(p.plantName)}" data-address="${escapeHtml(p.address || '')}" data-cap="${p.capacity || 0}" ${isSelected}>${escapeHtml(p.plantName)} [${escapeHtml(p.plantCode)}]</option>`;
+            }).join('');
+        plantSelect.style.display = 'block';
+
+        if (devicesInfo) {
+            devicesInfo.innerHTML = `✅ ${plants.length} plantas detectadas en tu cuenta Huawei FusionSolar.`;
+            devicesInfo.style.display = 'block';
+        }
+        showToast(`Se encontraron ${plants.length} plantas en Huawei`, 'success');
+    } catch (err) {
+        console.error('Error cargando plantas Huawei:', err);
+        alert('No se pudieron obtener las plantas de Huawei: ' + (err.message || err));
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        cargandoPlantasHuawei = false;
+    }
+});
+
+document.getElementById('invAdminPlantSelectHuawei')?.addEventListener('change', async function() {
+    const selectedPlantCode = this.value;
+    if (!selectedPlantCode) return;
+
+    document.getElementById('invAdminPlantId').value = selectedPlantCode;
+    const selectedOption = this.options[this.selectedIndex];
+    const plantName = selectedOption?.dataset?.name || '';
+    const plantAddress = selectedOption?.dataset?.address || '';
+    const plantCap = selectedOption?.dataset?.cap || '';
+
+    const nameInput = document.getElementById('invAdminNombre');
+    if (plantName && (!nameInput.value.trim() || nameInput.value.includes('Planta') || nameInput.value === 'Nuevo')) {
+        nameInput.value = plantName;
+    }
+    const ubicacionInput = document.getElementById('invAdminUbicacion');
+    if (plantAddress && !ubicacionInput.value.trim()) {
+        ubicacionInput.value = plantAddress;
+    }
+    const capInput = document.getElementById('invAdminCapacidad');
+    if (plantCap && Number(plantCap) > 0 && !capInput.value.trim()) {
+        capInput.value = plantCap;
+    }
+
+    const devicesInfo = document.getElementById('invAdminDevicesInfoHuawei');
+    if (devicesInfo) {
+        devicesInfo.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Consultando inversores de esta planta...`;
+        devicesInfo.style.display = 'block';
+    }
+
+    try {
+        const apiUrl = document.getElementById('invAdminApiUrl').value.trim();
+        const apiUser = document.getElementById('invAdminApiUser').value.trim();
+        const apiPassword = document.getElementById('invAdminApiPassword').value;
+        const devices = await db.getHuaweiDevices(selectedPlantCode, apiUser, apiPassword, apiUrl);
+
+        if (devices && devices.length) {
+            const inverters = devices.filter(d => d.devTypeId === 1 || d.devTypeId === 38 || (d.model && d.model.toUpperCase().includes('SUN2000')) || (d.devName && d.devName.toUpperCase().includes('INV')));
+            const targetDevice = inverters.length > 0 ? inverters[0] : devices[0];
+
+            const serialInput = document.getElementById('invAdminSerial');
+            const gatewayInput = document.getElementById('invAdminGatewayId');
+            const modeloInput = document.getElementById('invAdminModelo');
+
+            if (targetDevice.serial && !serialInput.value.trim()) {
+                serialInput.value = targetDevice.serial;
+            }
+            if (targetDevice.devId && !gatewayInput.value.trim()) {
+                gatewayInput.value = targetDevice.devId;
+            }
+            if (targetDevice.model && (!modeloInput.value.trim() || modeloInput.value === 'No especificado')) {
+                modeloInput.value = targetDevice.model;
+            }
+
+            if (devicesInfo) {
+                const names = devices.map(d => `${d.model || d.devName} (${d.serial || d.devId})`).join(', ');
+                devicesInfo.innerHTML = `✅ Planta vinculada (${selectedPlantCode}). Dispositivos: ${names}`;
+            }
+            showToast('Planta e inversor Huawei vinculados', 'success');
+        } else if (devicesInfo) {
+            devicesInfo.innerHTML = `✅ Código de planta asignado: ${selectedPlantCode}`;
+        }
+    } catch (e) {
+        console.warn('No se pudieron autocompletar dispositivos Huawei:', e);
+        if (devicesInfo) {
+            devicesInfo.innerHTML = `✅ Código de planta asignado: ${selectedPlantCode}`;
         }
     }
 });

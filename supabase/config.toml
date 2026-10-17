@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.growatt-scheduled]
 verify_jwt = false
+
+[functions.huawei-sync]
+verify_jwt = false

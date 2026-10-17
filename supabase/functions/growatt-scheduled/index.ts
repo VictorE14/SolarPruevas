@@ -40,25 +40,29 @@ Deno.serve(async (request) => {
   const admin = createClient(supabaseUrl, serviceRoleKey);
   const { data: inverters, error: queryError } = await admin
     .from('inversores')
-    .select('id,nombre,marca,api_token')
-    .ilike('marca', 'growatt')
-    .not('api_token', 'is', null)
+    .select('id,nombre,marca,api_token,plant_id,huawei_plant_code')
+    .or('marca.ilike.growatt,marca.ilike.huawei')
     .order('api_last_sync', { ascending: true, nullsFirst: true })
-    .limit(1);
+    .limit(2);
 
   if (queryError) return response({ ok: false, error: queryError.message }, 500);
 
   const results = [];
-  for (const inverter of (inverters || []) as Inverter[]) {
-    const { data, error } = await admin.functions.invoke('growatt-sync', {
+  for (const inverter of (inverters || []) as any[]) {
+    const isHuawei = String(inverter.marca || '').toLowerCase() === 'huawei';
+    const funcName = isHuawei ? 'huawei-sync' : 'growatt-sync';
+    const { data, error } = await admin.functions.invoke(funcName, {
       body: { inverterId: inverter.id },
     });
     results.push({
       inverterId: inverter.id,
       nombre: inverter.nombre,
+      marca: inverter.marca,
       ok: !error && data?.ok === true,
       error: error?.message || data?.error || null,
     });
+    // Espaciado de seguridad para respetar límites de frecuencia de APIs (Growatt y Huawei)
+    await new Promise(resolve => setTimeout(resolve, 2500));
   }
 
   return response({

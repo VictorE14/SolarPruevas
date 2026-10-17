@@ -392,6 +392,65 @@
         return data.devices || [];
     }
 
+    async function sincronizarHuawei(inverterId) {
+        const client = ensureClient();
+        const { data, error } = await client.functions.invoke('huawei-sync', {
+            body: { inverterId }
+        });
+        if (error) {
+            let detail = error.message || 'La Edge Function de Huawei devolvió un error.';
+            try {
+                const responseBody = error.context && typeof error.context.json === 'function'
+                    ? await error.context.json()
+                    : null;
+                if (responseBody?.error) detail = responseBody.error;
+            } catch (parseError) {
+                console.warn('No se pudo leer el detalle del error Huawei:', parseError);
+            }
+            throw new Error(detail);
+        }
+        if (!data?.ok) throw new Error(data?.error || 'No se pudo sincronizar con Huawei');
+        return data;
+    }
+
+    async function getHuaweiPlants(apiUser = '', apiPassword = '', apiUrl = '') {
+        const client = ensureClient();
+        const { data, error } = await client.functions.invoke('huawei-sync', {
+            body: { action: 'get-plants', apiUser: apiUser.trim(), apiPassword: apiPassword.trim(), apiUrl: apiUrl.trim() }
+        });
+        if (error) {
+            let detail = error.message || 'Error al consultar plantas de Huawei';
+            try {
+                const responseBody = error.context && typeof error.context.json === 'function'
+                    ? await error.context.json()
+                    : null;
+                if (responseBody?.error) detail = responseBody.error;
+            } catch (_) {}
+            throw new Error(detail);
+        }
+        if (!data?.ok) throw new Error(data?.error || 'No se pudieron obtener las plantas de Huawei');
+        return data.plants || [];
+    }
+
+    async function getHuaweiDevices(plantCode, apiUser = '', apiPassword = '', apiUrl = '') {
+        const client = ensureClient();
+        const { data, error } = await client.functions.invoke('huawei-sync', {
+            body: { action: 'get-devices', plantCode: plantCode.trim(), apiUser: apiUser.trim(), apiPassword: apiPassword.trim(), apiUrl: apiUrl.trim() }
+        });
+        if (error) {
+            let detail = error.message || 'Error al consultar dispositivos de Huawei';
+            try {
+                const responseBody = error.context && typeof error.context.json === 'function'
+                    ? await error.context.json()
+                    : null;
+                if (responseBody?.error) detail = responseBody.error;
+            } catch (_) {}
+            throw new Error(detail);
+        }
+        if (!data?.ok) throw new Error(data?.error || 'No se pudieron obtener los dispositivos de Huawei');
+        return data.devices || [];
+    }
+
     async function getAlertasActivas(usuarioId = null) {
         const client = ensureClient();
         let query = client
@@ -621,6 +680,9 @@
         sincronizarGrowatt,
         getGrowattPlants,
         getGrowattDevices,
+        sincronizarHuawei,
+        getHuaweiPlants,
+        getHuaweiDevices,
         getAlertasActivas,
         getAllAlertas,
         resolverAlerta,
