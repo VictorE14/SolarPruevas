@@ -13,6 +13,7 @@ let dailyProductionByInverter = new Map();
 let historicalReadingsByInverter = new Map();
 let inverterStoppedForDate = new Map();
 let inverterStoppedAt = new Map();
+let inverterLastReadingSignature = new Map();
 let productionCacheDate = null;
 let usuarioActual = null;
 const INVERTER_RECHECK_MS = 30 * 1000;
@@ -165,7 +166,7 @@ document.getElementById('logoutBtn')?.addEventListener('click', function() {
 async function loadInverters() {
     try {
         let data;
-        if (!usuarioActual) return [];
+        if (!usuarioActual) return false;
 
         const currentDateKey = getMexicoDateKey();
         if (productionCacheDate !== currentDateKey) {
@@ -173,6 +174,7 @@ async function loadInverters() {
             inverterStoppedForDate.clear();
             inverterStoppedAt.clear();
             dailyProductionByInverter.clear();
+            inverterLastReadingSignature.clear();
         }
         
         if (usuarioActual.rol === 'admin') {
@@ -201,12 +203,15 @@ async function loadInverters() {
             apiToken: inv.api_token || null
         }));
         
+        let hasAnyNewData = (inverterLastReadingSignature.size === 0);
+
         await Promise.all(inverters.map(async (inv) => {
             try {
                 const stoppedAt = inverterStoppedAt.get(inv.id);
                 const stoppedForToday = inverterStoppedForDate.get(inv.id) === currentDateKey;
+                let ultima = null;
                 if (!(stoppedForToday && stoppedAt && Date.now() - stoppedAt < INVERTER_RECHECK_MS)) {
-                    const ultima = await db.getUltimaLectura(inv.id);
+                    ultima = await db.getUltimaLectura(inv.id);
                     if (ultima) {
                         // Si el inversor está marcado como offline en BD, conservar offline y potencia 0
                         if (inv.estado === 'offline') {
@@ -233,40 +238,54 @@ async function loadInverters() {
                     }
                 }
 
-                if (typeof db.getLecturasByInversor === 'function') {
-                    // Cargar hasta 3000 lecturas para abarcar meses anteriores (ej. Septiembre y Octubre)
-                    const lecturas = await db.getLecturasByInversor(inv.id, 3000);
-                    historicalReadingsByInverter.set(inv.id, lecturas || []);
-                    const latestReadingByDate = new Map();
-                    (lecturas || []).forEach(lectura => {
-                        if (!lectura.timestamp) return;
-                        const dateKey = getMexicoDateKey(lectura.timestamp);
-                        const energy = Number(lectura.energia_dia || 0);
-                        const cur = latestReadingByDate.get(dateKey) || 0;
-                        if (energy > cur || !latestReadingByDate.has(dateKey)) {
-                            latestReadingByDate.set(dateKey, energy);
-                        }
-                    });
-                    dailyProductionByInverter.set(inv.id, latestReadingByDate);
+                // Firma de la última lectura para verificar si hay datos nuevos
+                const readingSig = ultima
+                    ? `${ultima.timestamp || ''}_${ultima.potencia_ac || 0}_${ultima.energia_dia || 0}_${inv.estado || ''}`
+                    : `none_${inv.estado || ''}`;
+                const prevSig = inverterLastReadingSignature.get(inv.id);
+                const isNewReading = prevSig !== readingSig || !historicalReadingsByInverter.has(inv.id);
+
+                if (isNewReading) {
+                    hasAnyNewData = true;
+                    inverterLastReadingSignature.set(inv.id, readingSig);
+
+                    if (typeof db.getLecturasByInversor === 'function') {
+                        const lecturas = await db.getLecturasByInversor(inv.id, 3000);
+                        historicalReadingsByInverter.set(inv.id, lecturas || []);
+                        const latestReadingByDate = new Map();
+                        (lecturas || []).forEach(lectura => {
+                            if (!lectura.timestamp) return;
+                            const dateKey = getMexicoDateKey(lectura.timestamp);
+                            const energy = Number(lectura.energia_dia || 0);
+                            const cur = latestReadingByDate.get(dateKey) || 0;
+                            if (energy > cur || !latestReadingByDate.has(dateKey)) {
+                                latestReadingByDate.set(dateKey, energy);
+                            }
+                        });
+                        dailyProductionByInverter.set(inv.id, latestReadingByDate);
+                    }
                 }
             } catch (e) {
                 console.warn(`⚠️ No se pudo cargar lectura para ${inv.nombre}`, e);
             }
         }));
 
-        dailyProductionByDate = {};
-        dailyProductionByInverter.forEach(readingsByDate => {
-            readingsByDate.forEach((energy, dateKey) => {
-                dailyProductionByDate[dateKey] = (dailyProductionByDate[dateKey] || 0) + energy;
+        if (hasAnyNewData) {
+            dailyProductionByDate = {};
+            dailyProductionByInverter.forEach(readingsByDate => {
+                readingsByDate.forEach((energy, dateKey) => {
+                    dailyProductionByDate[dateKey] = (dailyProductionByDate[dateKey] || 0) + energy;
+                });
             });
-        });
 
-        saveDashboardCache();
-        console.log(`✅ ${inverters.length} inversores cargados para ${usuarioActual.nombre}`);
-        return inverters;
+            saveDashboardCache();
+            console.log(`📡 Nuevos datos procesados para ${inverters.length} inversores`);
+        }
+
+        return hasAnyNewData;
     } catch (error) {
         console.error('❌ Error al cargar inversores:', error);
-        return [];
+        return false;
     }
 }
 
@@ -1350,13 +1369,31 @@ function updateStatsSummary(range = getSelectedStatsRange()) {
     return production;
 }
 
-function initStatsChart() {
+function updateStatsChartData(forceRecreate = false) {
+    const canvas = document.getElementById('statsChart');
+    if (!canvas) return;
+    const range = getSelectedStatsRange();
+    const production = updateStatsSummary(range);
+
+    // Si ya existe la instancia y coincide el tipo de gráfica (line o bar) y no se fuerza recreación:
+    if (statsChartInstance && !forceRecreate && statsChartInstance.config.type === production.type) {
+        statsChartInstance.data.labels = production.labels;
+        statsChartInstance.data.datasets[0].data = production.data;
+        statsChartInstance.data.datasets[0].label = production.unit === 'kW' ? 'Potencia total del sistema (kW)' : 'Producción (kWh)';
+        statsChartInstance.update('none'); // Actualización suave sin parpadeo
+        return;
+    }
+
+    initStatsChart(production);
+}
+
+function initStatsChart(existingProduction = null) {
     const canvas = document.getElementById('statsChart');
     if (!canvas) { console.error('❌ No se encontró statsChart'); return; }
     const ctx = canvas.getContext('2d');
     if (statsChartInstance) statsChartInstance.destroy();
     const range = getSelectedStatsRange();
-    const production = updateStatsSummary(range);
+    const production = existingProduction || updateStatsSummary(range);
     const isDia = range === 'dia';
     const isDark = document.body.classList.contains('dark-mode');
     const statsTextColor = isDark ? '#94a3b8' : '#475569';
@@ -1622,7 +1659,13 @@ document.querySelectorAll('.nav-menu a[data-section]').forEach(link => {
             renderApiStatus();
         }
         if (sectionId === 'estadisticas') {
-            setTimeout(initStatsChart, 200);
+            setTimeout(() => {
+                if (!statsChartInstance) {
+                    initStatsChart();
+                } else {
+                    statsChartInstance.resize();
+                }
+            }, 60);
         }
     });
 });
@@ -2410,6 +2453,9 @@ async function initDashboard() {
         renderFullInverterTable();
         renderApiStatus();
         initDashboardCharts();
+        if (document.getElementById('estadisticas')?.classList.contains('active')) {
+            initStatsChart();
+        }
     }
     
     await loadInverters();
@@ -2432,6 +2478,7 @@ async function initDashboard() {
     renderApiStatus();
     
     initDashboardCharts();
+    initStatsChart();
     initWeatherWidget();
     startWeatherUpdates();
 
@@ -2439,19 +2486,30 @@ async function initDashboard() {
     
     if (intervalId) clearInterval(intervalId);
     intervalId = setInterval(async () => {
-        await loadInverters();
+        const hasNewData = await loadInverters();
         try {
             await loadAlertas();
         } catch (error) {
             console.error('❌ Error al actualizar alertas:', error);
         }
 
-        renderDashboardKPIs();
-        renderDashboardTable();
-        renderFullInverterTable();
-        updateDashboardCharts();
-        if (document.getElementById('estadisticas')?.classList.contains('active')) {
-            initStatsChart();
+        // Mientras NO reciba datos nuevos, la gráfica se mantiene intacta en pantalla
+        // Solo cuando reciba datos nuevos se actualizan las métricas y la curva
+        if (hasNewData) {
+            renderDashboardKPIs();
+            renderDashboardTable();
+            renderFullInverterTable();
+            updateDashboardCharts();
+            if (statsChartInstance) {
+                const range = getSelectedStatsRange();
+                const production = updateStatsSummary(range);
+                statsChartInstance.data.labels = production.labels;
+                statsChartInstance.data.datasets[0].data = production.data;
+                statsChartInstance.data.datasets[0].label = production.unit === 'kW' ? 'Potencia total del sistema (kW)' : 'Producción (kWh)';
+                statsChartInstance.update('none');
+            } else if (document.getElementById('estadisticas')?.classList.contains('active')) {
+                initStatsChart();
+            }
         }
     }, 10000);
     
