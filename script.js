@@ -71,11 +71,18 @@ function restoreDashboardCache() {
     }
 }
 
+function parseSafeDate(value = new Date()) {
+    if (!value) return new Date();
+    if (value instanceof Date) return value;
+    const str = String(value).trim();
+    if (!str) return new Date();
+    // Si no contiene indicador de zona horaria ('Z' o offset +HH:mm/-HH:mm),
+    // agregamos 'Z' ya que Supabase/PostgreSQL almacena las lecturas en UTC.
+    return !/[zZ]|[+-]\d{2}:?\d{2}$/.test(str) ? new Date(`${str}Z`) : new Date(str);
+}
+
 function getMexicoDateKey(value = new Date()) {
-    const rawValue = value instanceof Date ? value : new Date(value);
-    const date = typeof value === 'string' && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(value)
-        ? new Date(`${value}Z`)
-        : rawValue;
+    const date = parseSafeDate(value);
     const parts = new Intl.DateTimeFormat('en-CA', {
         timeZone: CRODE_TIME_ZONE,
         year: 'numeric',
@@ -86,6 +93,17 @@ function getMexicoDateKey(value = new Date()) {
         return result;
     }, {});
     return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function getMexicoHour(value = new Date()) {
+    const date = parseSafeDate(value);
+    const hourStr = new Intl.DateTimeFormat('en-US', {
+        timeZone: CRODE_TIME_ZONE,
+        hour: '2-digit',
+        hour12: false
+    }).format(date);
+    const hour = parseInt(hourStr, 10);
+    return Number.isNaN(hour) ? 0 : hour % 24;
 }
 
 // ============================================================
@@ -183,55 +201,58 @@ async function loadInverters() {
             apiToken: inv.api_token || null
         }));
         
-        for (const inv of inverters) {
+        await Promise.all(inverters.map(async (inv) => {
             try {
                 const stoppedAt = inverterStoppedAt.get(inv.id);
                 const stoppedForToday = inverterStoppedForDate.get(inv.id) === currentDateKey;
-                if (stoppedForToday && stoppedAt && Date.now() - stoppedAt < INVERTER_RECHECK_MS) continue;
+                if (!(stoppedForToday && stoppedAt && Date.now() - stoppedAt < INVERTER_RECHECK_MS)) {
+                    const ultima = await db.getUltimaLectura(inv.id);
+                    if (ultima) {
+                        // Si el inversor está marcado como offline en BD, conservar offline y potencia 0
+                        if (inv.estado === 'offline') {
+                            inv.potencia = 0;
+                        } else {
+                            inv.potencia = Number(ultima.potencia_ac) || 0;
+                            inv.estado = ultima.estado_operativo || inv.estado;
+                        }
+                        inv.energiaHoy = Number(ultima.energia_dia) || 0;
 
-                const ultima = await db.getUltimaLectura(inv.id);
-                if (ultima) {
-                    // Si el inversor está marcado como offline en BD, conservar offline y potencia 0
-                    if (inv.estado === 'offline') {
-                        inv.potencia = 0;
-                    } else {
-                        inv.potencia = Number(ultima.potencia_ac) || 0;
-                        inv.estado = ultima.estado_operativo || inv.estado;
+                        const lastReadingDate = getMexicoDateKey(ultima.timestamp);
+                        if (lastReadingDate === currentDateKey && inv.estado === 'offline') {
+                            inverterStoppedForDate.set(inv.id, currentDateKey);
+                            inverterStoppedAt.set(inv.id, Date.now());
+                        } else if (inv.estado !== 'offline') {
+                            inverterStoppedForDate.delete(inv.id);
+                            inverterStoppedAt.delete(inv.id);
+                        }
                     }
-                    inv.energiaHoy = Number(ultima.energia_dia) || 0;
 
-                    const lastReadingDate = getMexicoDateKey(ultima.timestamp);
-                    if (lastReadingDate === currentDateKey && inv.estado === 'offline') {
-                        inverterStoppedForDate.set(inv.id, currentDateKey);
-                        inverterStoppedAt.set(inv.id, Date.now());
-                    } else if (inv.estado !== 'offline') {
-                        inverterStoppedForDate.delete(inv.id);
-                        inverterStoppedAt.delete(inv.id);
+                    // Evaluar reglas de alertas automáticas (A, B, C)
+                    if (typeof db.evaluarAlertasInversor === 'function') {
+                        await db.evaluarAlertasInversor(inv, ultima);
                     }
-                }
-
-                // Evaluar reglas de alertas automáticas (A, B, C)
-                if (typeof db.evaluarAlertasInversor === 'function') {
-                    await db.evaluarAlertasInversor(inv, ultima);
                 }
 
                 if (typeof db.getLecturasByInversor === 'function') {
-                    const lecturas = await db.getLecturasByInversor(inv.id, 500);
+                    // Cargar hasta 3000 lecturas para abarcar meses anteriores (ej. Septiembre y Octubre)
+                    const lecturas = await db.getLecturasByInversor(inv.id, 3000);
                     historicalReadingsByInverter.set(inv.id, lecturas || []);
                     const latestReadingByDate = new Map();
                     (lecturas || []).forEach(lectura => {
                         if (!lectura.timestamp) return;
                         const dateKey = getMexicoDateKey(lectura.timestamp);
-                        if (!latestReadingByDate.has(dateKey)) {
-                            latestReadingByDate.set(dateKey, Number(lectura.energia_dia || 0));
+                        const energy = Number(lectura.energia_dia || 0);
+                        const cur = latestReadingByDate.get(dateKey) || 0;
+                        if (energy > cur || !latestReadingByDate.has(dateKey)) {
+                            latestReadingByDate.set(dateKey, energy);
                         }
                     });
                     dailyProductionByInverter.set(inv.id, latestReadingByDate);
                 }
             } catch (e) {
-                console.warn(`⚠️ No se pudo cargar lectura para ${inv.nombre}`);
+                console.warn(`⚠️ No se pudo cargar lectura para ${inv.nombre}`, e);
             }
-        }
+        }));
 
         dailyProductionByDate = {};
         dailyProductionByInverter.forEach(readingsByDate => {
@@ -1115,29 +1136,77 @@ function updateDashboardCharts() {
     weeklyChartInstance.update('none');
 }
 
-function buildStatsProductionData(range = 'semana') {
+function buildStatsProductionData(range = 'hora') {
     const todayKey = getMexicoDateKey();
     const dailyValues = new Map();
     dailyProductionByInverter.forEach(readings => readings.forEach((energy, dateKey) => {
         dailyValues.set(dateKey, (dailyValues.get(dateKey) || 0) + Number(energy || 0));
     }));
 
+    if (dailyValues.size === 0 && typeof dailyProductionByDate === 'object' && dailyProductionByDate !== null) {
+        Object.entries(dailyProductionByDate).forEach(([dateKey, energy]) => {
+            dailyValues.set(dateKey, Number(energy || 0));
+        });
+    }
+
     if (range === 'hora') {
-        const hourly = Array(24).fill(0).map(() => ({ total: 0, count: 0 }));
-        historicalReadingsByInverter.forEach(readings => readings.forEach(reading => {
-            if (getMexicoDateKey(reading.timestamp) !== todayKey) return;
-            const hour = Number(new Intl.DateTimeFormat('en-US', {
-                timeZone: CRODE_TIME_ZONE, hour: '2-digit', hour12: false
-            }).format(new Date(reading.timestamp)));
-            if (hour >= 0 && hour < 24) {
-                hourly[hour].total += Number(reading.potencia_ac || 0);
-                hourly[hour].count += 1;
+        // Encontrar la fecha objetivo (hoy, o la más reciente con lecturas en el historial)
+        let targetDateKey = todayKey;
+        let hasTodayData = false;
+        historicalReadingsByInverter.forEach(readings => {
+            if ((readings || []).some(r => r.timestamp && getMexicoDateKey(r.timestamp) === todayKey)) {
+                hasTodayData = true;
             }
-        }));
+        });
+
+        if (!hasTodayData) {
+            let latestFound = null;
+            historicalReadingsByInverter.forEach(readings => {
+                (readings || []).forEach(r => {
+                    if (!r.timestamp) return;
+                    const dk = getMexicoDateKey(r.timestamp);
+                    if (!latestFound || dk > latestFound) latestFound = dk;
+                });
+            });
+            if (latestFound) targetDateKey = latestFound;
+        }
+
+        // Agrupar lecturas por hora y por cada inversor para calcular la potencia horaria real del sistema
+        // hourlyByInverter[hour][inverterId] = { sum: 0, count: 0 }
+        const hourlyByInverter = Array(24).fill(null).map(() => ({}));
+        historicalReadingsByInverter.forEach((readings, inverterId) => {
+            (readings || []).forEach(reading => {
+                if (!reading.timestamp) return;
+                if (getMexicoDateKey(reading.timestamp) !== targetDateKey) return;
+                const hour = getMexicoHour(reading.timestamp);
+                if (hour >= 0 && hour < 24) {
+                    if (!hourlyByInverter[hour][inverterId]) {
+                        hourlyByInverter[hour][inverterId] = { sum: 0, count: 0 };
+                    }
+                    hourlyByInverter[hour][inverterId].sum += Number(reading.potencia_ac || 0);
+                    hourlyByInverter[hour][inverterId].count += 1;
+                }
+            });
+        });
+
+        const hourlyData = [];
+        for (let h = 0; h < 24; h++) {
+            const invertersInHour = hourlyByInverter[h];
+            let plantTotalKw = 0;
+            Object.values(invertersInHour).forEach(v => {
+                if (v.count > 0) {
+                    plantTotalKw += (v.sum / v.count);
+                }
+            });
+            hourlyData.push(Number(plantTotalKw.toFixed(1)));
+        }
+
         return {
-            type: 'line', unit: 'kW',
-            labels: hourly.map((_, hour) => `${String(hour).padStart(2, '0')}:00`),
-            data: hourly.map(value => value.count ? Number((value.total / value.count).toFixed(2)) : 0)
+            type: 'line',
+            unit: 'kW',
+            targetDateKey,
+            labels: hourlyData.map((_, hour) => `${String(hour).padStart(2, '0')}:00`),
+            data: hourlyData
         };
     }
 
@@ -1165,11 +1234,6 @@ function buildStatsProductionData(range = 'semana') {
     }
 
     // range === 'dia': Todos los días del mes completo (1 al 28/29/30/31)
-    if (dailyValues.size === 0 && typeof dailyProductionByDate === 'object' && dailyProductionByDate !== null) {
-        Object.entries(dailyProductionByDate).forEach(([dateKey, energy]) => {
-            dailyValues.set(dateKey, Number(energy || 0));
-        });
-    }
 
     const [todayYearStr, todayMonthStr] = todayKey.split('-');
     let targetYear = parseInt(todayYearStr, 10);
@@ -1224,26 +1288,65 @@ function updateStatsSummary(range = getSelectedStatsRange()) {
     const todayKey = getMexicoDateKey();
     const production = buildStatsProductionData(range);
 
-    let todayEnergy = 0;
-    dailyProductionByInverter.forEach(readings => {
-        todayEnergy += Number(readings.get(todayKey) || 0);
-    });
-    if (todayEnergy === 0 && dailyProductionByDate[todayKey]) {
-        todayEnergy = Number(dailyProductionByDate[todayKey] || 0);
+    let totalEnergy = 0;
+    let avgMetricValue = 0;
+    let avgMetricUnit = 'kW';
+    let avgMetricLabel = 'Potencia Promedio';
+    let totalMetricLabel = 'Producción Total';
+
+    if (range === 'hora') {
+        const activeDateKey = production.targetDateKey || todayKey;
+        dailyProductionByInverter.forEach(readings => {
+            totalEnergy += Number(readings.get(activeDateKey) || 0);
+        });
+        if (totalEnergy === 0 && dailyProductionByDate[activeDateKey]) {
+            totalEnergy = Number(dailyProductionByDate[activeDateKey] || 0);
+        }
+        if (totalEnergy === 0) {
+            totalEnergy = production.data.reduce((sum, v) => sum + v, 0);
+        }
+
+        // Potencia promedio generada durante horas activas de sol (> 0.5 kW)
+        const activeHours = production.data.filter(val => val > 0.5);
+        avgMetricValue = activeHours.length
+            ? activeHours.reduce((sum, val) => sum + val, 0) / activeHours.length
+            : 0;
+        avgMetricUnit = 'kW';
+        avgMetricLabel = 'Potencia Prom. Generada';
+        totalMetricLabel = 'Producción del Día';
+    } else if (range === 'dia') {
+        totalEnergy = production.data.reduce((sum, val) => sum + val, 0);
+        const daysWithProd = production.data.filter(val => val > 0);
+        avgMetricValue = daysWithProd.length ? totalEnergy / daysWithProd.length : 0;
+        avgMetricUnit = 'kWh/día';
+        avgMetricLabel = 'Promedio Diario';
+        totalMetricLabel = 'Producción del Mes';
+    } else if (range === 'mes') {
+        totalEnergy = production.data.reduce((sum, val) => sum + val, 0);
+        const monthsWithProd = production.data.filter(val => val > 0);
+        avgMetricValue = monthsWithProd.length ? totalEnergy / monthsWithProd.length : 0;
+        avgMetricUnit = 'kWh/mes';
+        avgMetricLabel = 'Promedio Mensual';
+        totalMetricLabel = 'Producción del Año';
+    } else if (range === 'anio') {
+        totalEnergy = production.data.reduce((sum, val) => sum + val, 0);
+        const yearsWithProd = production.data.filter(val => val > 0);
+        avgMetricValue = yearsWithProd.length ? totalEnergy / yearsWithProd.length : 0;
+        avgMetricUnit = 'kWh/año';
+        avgMetricLabel = 'Promedio Anual';
+        totalMetricLabel = 'Producción Histórica';
     }
-
-    const totalEnergy = range === 'hora'
-        ? todayEnergy
-        : production.data.reduce((sum, value) => sum + value, 0);
-
-    const averagePower = inverters.length
-        ? inverters.reduce((sum, inverter) => sum + Number(inverter.potencia || 0), 0) / inverters.length
-        : 0;
 
     const totalElement = document.getElementById('statsTotalEnergy');
     const averageElement = document.getElementById('statsAvgPower');
+    const totalLabelEl = document.getElementById('statsTotalLabel');
+    const avgLabelEl = document.getElementById('statsAvgLabel');
+
     if (totalElement) totalElement.innerHTML = `${totalEnergy.toFixed(1)} <small>kWh</small>`;
-    if (averageElement) averageElement.innerHTML = `${averagePower.toFixed(1)} <small>kW</small>`;
+    if (averageElement) averageElement.innerHTML = `${avgMetricValue.toFixed(1)} <small>${avgMetricUnit}</small>`;
+    if (totalLabelEl) totalLabelEl.textContent = totalMetricLabel;
+    if (avgLabelEl) avgLabelEl.textContent = avgMetricLabel;
+
     return production;
 }
 
@@ -1265,7 +1368,7 @@ function initStatsChart() {
         data: {
             labels: production.labels,
             datasets: [{
-                label: production.unit === 'kW' ? 'Potencia promedio (kW)' : 'Producción (kWh)',
+                label: production.unit === 'kW' ? 'Potencia total del sistema (kW)' : 'Producción (kWh)',
                 data: production.data,
                 borderColor: '#3b82f6',
                 backgroundColor: statsBgColor,
@@ -1340,10 +1443,14 @@ document.querySelectorAll('#statsRange .stats-period-btn').forEach(button => {
 });
 
 // ============================================================
-//  MODAL AGREGAR INVERSOR
+//  MODAL AGREGAR INVERSOR (RESTRINGIDO A ADMINS)
 // ============================================================
 
 document.getElementById('btnAddInverter')?.addEventListener('click', () => {
+    if (usuarioActual?.rol !== 'admin') {
+        alert('Solo los administradores tienen permisos para agregar nuevos inversores.');
+        return;
+    }
     document.getElementById('modalInverter')?.classList.add('open');
 });
 
@@ -1358,6 +1465,10 @@ document.getElementById('modalInverter')?.addEventListener('click', (e) => {
 });
 
 document.getElementById('saveInverter')?.addEventListener('click', async () => {
+    if (usuarioActual?.rol !== 'admin') {
+        alert('Solo los administradores tienen permisos para agregar nuevos inversores.');
+        return;
+    }
     const nombre = document.getElementById('invNombre')?.value.trim();
     const marca = document.getElementById('invMarca')?.value;
     const modelo = document.getElementById('invModelo')?.value.trim() || 'No especificado';
@@ -1563,9 +1674,680 @@ window.addEventListener('resize', () => {
     }
 });
 
-document.getElementById('btnExport')?.addEventListener('click', () => {
-    alert('📄 Reporte exportado en formato CSV/PDF (simulación).');
-});
+// ============================================================
+//  EXPORTACIÓN DE REPORTES EN PDF (INDIVIDUAL Y 4 EN 1)
+// ============================================================
+
+function renderChartImageForPdf({ type = 'line', labels = [], data = [], title = '', unit = 'kW', color = '#2563eb', aspect = 2.8 }) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1000;
+    canvas.height = Math.round(1000 / aspect);
+    const ctx = canvas.getContext('2d');
+    
+    // Fondo blanco sólido para que en el PDF no se transparente
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const isLine = type === 'line';
+    const chart = new Chart(ctx, {
+        type: isLine ? 'line' : 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: `${title} (${unit})`,
+                data: data,
+                borderColor: color,
+                backgroundColor: isLine ? 'rgba(37, 99, 235, 0.14)' : color,
+                borderWidth: isLine ? 2.5 : 1,
+                borderRadius: isLine ? 0 : 3,
+                tension: 0.35,
+                fill: isLine,
+                pointRadius: isLine ? (labels.length > 24 ? 1.5 : 3.5) : 0,
+                pointBackgroundColor: color
+            }]
+        },
+        options: {
+            animation: false,
+            responsive: false,
+            devicePixelRatio: 1,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: { color: '#0f172a', font: { size: 12, weight: 'bold' } }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: '#f1f5f9' },
+                    ticks: { color: '#475569', font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 24 }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: '#e2e8f0' },
+                    ticks: { color: '#475569', font: { size: 10 } }
+                }
+            }
+        }
+    });
+
+    const img = canvas.toDataURL('image/png', 1.0);
+    chart.destroy();
+    return img;
+}
+
+async function exportProductionPdf({ scope = 'current', requestedRange = null, includeKpis = true, includeInverters = true, includeDataTable = true, includeWeather = true }) {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        throw new Error('La biblioteca jsPDF no está cargada en el navegador. Por favor recarga la página.');
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+    });
+
+    const primaryColor = [30, 58, 138];    // #1e3a8a (Azul CRODE)
+    const accentColor = [245, 158, 11];    // #f59e0b (Dorado Solar)
+    const darkTextColor = [15, 23, 42];    // #0f172a
+    const mutedTextColor = [100, 116, 139];// #64748b
+
+    // Helper: Encabezado principal
+    function drawHeader(title, subtitle) {
+        doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.rect(0, 0, 210, 24, 'F');
+        doc.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
+        doc.rect(0, 24, 210, 1.5, 'F');
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(15);
+        doc.text('CRODE SOLAR', 14, 11);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(224, 231, 255);
+        doc.text('Centro Regional de Optimización y Desarrollo de Equipo • Mérida, Yuc.', 14, 17);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(255, 255, 255);
+        doc.text(title.toUpperCase(), 196, 11, { align: 'right' });
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(224, 231, 255);
+        const nowStr = new Date().toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
+        doc.text(`Emisión: ${nowStr}`, 196, 17, { align: 'right' });
+
+        return 32;
+    }
+
+    // Helper: Barra de metadatos del reporte
+    function drawInfoBox(currentY, periodText) {
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(14, currentY, 182, 16, 2, 2, 'FD');
+
+        const roleText = usuarioActual?.rol === 'admin'
+            ? 'Administrador'
+            : (usuarioActual?.rol === 'invitado' ? 'Cliente' : 'Técnico');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
+        doc.text('RESPONSABLE:', 18, currentY + 6);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+        doc.text(`${usuarioActual?.nombre || 'Técnico'} (${roleText})`, 44, currentY + 6);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
+        doc.text('CORREO:', 18, currentY + 11.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+        doc.text(`${usuarioActual?.email || 'N/A'}`, 44, currentY + 11.5);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
+        doc.text('PERÍODO:', 116, currentY + 6);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+        doc.text(`${periodText}`, 135, currentY + 6);
+
+        const onlineCount = (inverters || []).filter(i => i.estado === 'online').length;
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
+        doc.text('INVERSORES:', 116, currentY + 11.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+        doc.text(`${inverters.length} total (${onlineCount} operativos)`, 138, currentY + 11.5);
+
+        return currentY + 21;
+    }
+
+    // Helper: Tarjetas de métricas clave (KPIs)
+    function drawKpiCards(currentY, kpis) {
+        const gap = 3;
+        const cardW = (182 - (gap * (kpis.length - 1))) / kpis.length;
+        const cardH = 16.5;
+
+        kpis.forEach((kpi, index) => {
+            const x = 14 + (index * (cardW + gap));
+            doc.setFillColor(248, 250, 252);
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(0.3);
+            doc.roundedRect(x, currentY, cardW, cardH, 1.5, 1.5, 'FD');
+
+            const barColor = kpi.color || [37, 99, 235];
+            doc.setFillColor(barColor[0], barColor[1], barColor[2]);
+            doc.rect(x, currentY, 1.5, cardH, 'F');
+
+            // Etiqueta superior
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(6.5);
+            doc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
+            doc.text(kpi.label.toUpperCase(), x + 4, currentY + 5.2);
+
+            // Calcular ancho del valor con su fuente real (10.5pt bold)
+            let valFontSize = 10.5;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(valFontSize);
+            const valStr = `${kpi.value}`;
+            let valWidth = doc.getTextWidth(valStr);
+
+            // Calcular ancho de la unidad (7.5pt normal)
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+            const unitWidth = doc.getTextWidth(kpi.unit);
+
+            // Si el número es muy grande, reducir ligeramente la fuente para que quepa holgado
+            if (valWidth + unitWidth + 7 > cardW) {
+                valFontSize = 9;
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(valFontSize);
+                valWidth = doc.getTextWidth(valStr);
+            }
+
+            // 1. Dibujar el valor numérico
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(valFontSize);
+            doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+            doc.text(valStr, x + 4, currentY + 12.2);
+
+            // 2. Dibujar la unidad con margen limpio de separación (+ 2 mm)
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+            doc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
+            doc.text(kpi.unit, x + 4 + valWidth + 2.0, currentY + 12.2);
+        });
+
+        return currentY + cardH + 5.5;
+    }
+
+    // Helper: Título de sección
+    function drawSectionTitle(currentY, title) {
+        doc.setFillColor(37, 99, 235);
+        doc.rect(14, currentY, 2.5, 5, 'F');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+        doc.text(title, 19, currentY + 4.2);
+
+        return currentY + 7.5;
+    }
+
+    // Helper: Datos del clima y radiación
+    async function drawWeatherSection(currentY) {
+        try {
+            const [weather, radiation] = await Promise.all([
+                fetchWeatherData(),
+                fetchSolarRadiation()
+            ]);
+
+            doc.setFillColor(239, 246, 255);
+            doc.setDrawColor(191, 219, 254);
+            doc.setLineWidth(0.3);
+            doc.roundedRect(14, currentY, 182, 11, 1.5, 1.5, 'FD');
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7.5);
+            doc.setTextColor(29, 78, 216);
+            doc.text('ESTACIÓN METEOROLÓGICA CRODE:', 18, currentY + 4.5);
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+            doc.setTextColor(30, 41, 59);
+            const info = `Temp: ${weather.temperatura}°C  |  Sensación: ${weather.sensacion_termica}°C  |  Radiación Solar: ${radiation.radiacion} W/m²  |  Humedad: ${weather.humedad}%  |  Clima: ${weather.clima}`;
+            doc.text(info, 18, currentY + 8.5);
+
+            return currentY + 15;
+        } catch {
+            return currentY;
+        }
+    }
+
+    // Helper: Pie de página con numeración y leyendas
+    function stampFooters() {
+        const totalPages = doc.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+            doc.setPage(i);
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(0.3);
+            doc.line(14, 287, 196, 287);
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7);
+            doc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
+            doc.text('CRODE Solar • Monitoreo Fotovoltaico Inteligente • Reporte Confidencial', 14, 292);
+            doc.text(`Página ${i} de ${totalPages}`, 196, 292, { align: 'right' });
+        }
+    }
+
+    const dateKey = typeof getMexicoDateKey === 'function' ? getMexicoDateKey() : 'hoy';
+
+    // ========================================================
+    // CASO 1: VISTA ACTUAL SELECCIONADA (HORA, DÍA, MES O AÑO)
+    // ========================================================
+    if (scope === 'current') {
+        const currentRange = requestedRange || getSelectedStatsRange();
+        const rangeTitles = {
+            hora: 'Reporte de Rendimiento Horario',
+            dia: 'Reporte de Producción Diaria (Mes)',
+            mes: 'Reporte de Producción Mensual (Año)',
+            anio: 'Reporte de Producción Anual (Histórico)'
+        };
+        const rangeLabels = {
+            hora: 'Horario (Hoy)',
+            dia: 'Diario (Mes en curso)',
+            mes: 'Mensual (Año en curso)',
+            anio: 'Anual (Últimos 5 años)'
+        };
+
+        let currentY = drawHeader(rangeTitles[currentRange] || 'Reporte de Producción', rangeLabels[currentRange]);
+        currentY = drawInfoBox(currentY, rangeLabels[currentRange]);
+
+        const prod = buildStatsProductionData(currentRange);
+
+        if (includeKpis) {
+            let totalVal = 0;
+            let avgVal = 0;
+            const values = prod.data || [];
+            const maxVal = values.length ? Math.max(...values) : 0;
+
+            if (currentRange === 'hora') {
+                const todayKey = getMexicoDateKey();
+                dailyProductionByInverter.forEach(readings => {
+                    totalVal += Number(readings.get(todayKey) || 0);
+                });
+                if (totalVal === 0 && dailyProductionByDate[todayKey]) {
+                    totalVal = Number(dailyProductionByDate[todayKey] || 0);
+                }
+                avgVal = inverters.length ? (inverters.reduce((sum, inv) => sum + Number(inv.potencia || 0), 0) / inverters.length) : 0;
+            } else {
+                totalVal = values.reduce((sum, v) => sum + v, 0);
+                avgVal = values.length ? (totalVal / values.length) : 0;
+            }
+
+            const kpis = [
+                { label: 'Producción Total', value: totalVal.toFixed(1), unit: currentRange === 'hora' ? 'kWh hoy' : 'kWh', color: [16, 185, 129] },
+                { label: 'Promedio Registrado', value: avgVal.toFixed(1), unit: prod.unit, color: [37, 99, 235] },
+                { label: 'Pico Máximo', value: maxVal.toFixed(1), unit: prod.unit, color: [245, 158, 11] },
+                { label: 'Inversores Planta', value: inverters.length, unit: 'equipos', color: [139, 92, 246] }
+            ];
+            currentY = drawKpiCards(currentY, kpis);
+        }
+
+        if (includeWeather) {
+            currentY = await drawWeatherSection(currentY);
+        }
+
+        // ========================================================
+        // 🌟 LA GRÁFICA PRINCIPAL EN PRIMERA PLANA (PÁGINA 1)
+        // ========================================================
+        currentY = drawSectionTitle(currentY, `Evolución Gráfica - ${rangeLabels[currentRange]}`);
+
+        const chartImg = renderChartImageForPdf({
+            type: prod.type,
+            labels: prod.labels,
+            data: prod.data,
+            title: prod.unit === 'kW' ? 'Potencia horaria del sistema' : 'Producción acumulada',
+            unit: prod.unit,
+            color: '#2563eb',
+            aspect: 2.7
+        });
+
+        doc.addImage(chartImg, 'PNG', 14, currentY, 182, 67);
+        currentY += 73;
+
+        // Desglose tabulado de valores (si se solicita)
+        if (includeDataTable && typeof doc.autoTable === 'function' && prod.labels.length > 0) {
+            if (currentY + 45 > 275) {
+                doc.addPage();
+                currentY = 22;
+            }
+
+            currentY = drawSectionTitle(currentY, 'Desglose Tabulado de Valores');
+
+            const totalSum = (prod.data || []).reduce((a, b) => a + b, 0);
+            const tableRows = prod.labels.map((lbl, idx) => {
+                const val = Number(prod.data[idx] || 0);
+                const pct = totalSum > 0 ? `${((val / totalSum) * 100).toFixed(1)}%` : '0%';
+                const fullLbl = prod.fullLabels && prod.fullLabels[idx] ? prod.fullLabels[idx] : lbl;
+                return [idx + 1, fullLbl, `${val.toFixed(2)} ${prod.unit}`, pct];
+            });
+
+            doc.autoTable({
+                startY: currentY,
+                head: [['#', 'Punto / Intervalo', `Valor (${prod.unit})`, '% Contribución']],
+                body: tableRows,
+                theme: 'striped',
+                headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
+                styles: { fontSize: 7.2, cellPadding: 1.8, textColor: [30, 41, 59] },
+                margin: { left: 14, right: 14 }
+            });
+            currentY = doc.lastAutoTable.finalY + 8;
+        }
+
+        // Ficha de inversores (al final, en su propia sección ordenada)
+        if (includeInverters && inverters.length > 0 && typeof doc.autoTable === 'function') {
+            if (currentY + 35 > 275) {
+                doc.addPage();
+                currentY = 22;
+            }
+
+            currentY = drawSectionTitle(currentY, 'Inversores Asignados');
+            doc.autoTable({
+                startY: currentY,
+                head: [['Inversor', 'Marca', 'Modelo', 'Potencia Actual', 'Energía Hoy', 'Estado']],
+                body: inverters.map(inv => [
+                    inv.nombre,
+                    inv.marca,
+                    inv.modelo || 'N/A',
+                    `${Number(inv.potencia || 0).toFixed(2)} kW`,
+                    `${Number(inv.energiaHoy || 0).toFixed(2)} kWh`,
+                    inv.estado === 'online' ? 'En línea' : 'Fuera de línea'
+                ]),
+                theme: 'grid',
+                headStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
+                styles: { fontSize: 7.5, cellPadding: 2, textColor: [30, 41, 59] },
+                margin: { left: 14, right: 14 }
+            });
+            currentY = doc.lastAutoTable.finalY + 6;
+        }
+
+        stampFooters();
+        doc.save(`Reporte_Solar_${currentRange.toUpperCase()}_${dateKey}.pdf`);
+        return;
+    }
+
+    // ========================================================
+    // CASO 2: REPORTE INTEGRAL COMPLETO (4 EN 1: HORA, DÍA, MES, AÑO)
+    // ========================================================
+    // PÁGINA 1: ANÁLISIS HORARIO Y DIARIO
+    let p1Y = drawHeader('Informe Integral Consolidado de Producción', 'Reporte Consolidado (4 en 1)');
+    p1Y = drawInfoBox(p1Y, 'Consolidado: Hora, Día, Mes y Año');
+
+    const prodHora = buildStatsProductionData('hora');
+    const prodDia = buildStatsProductionData('dia');
+    const prodMes = buildStatsProductionData('mes');
+    const prodAnio = buildStatsProductionData('anio');
+
+    if (includeKpis) {
+        let todayEnergy = 0;
+        dailyProductionByInverter.forEach(readings => {
+            todayEnergy += Number(readings.get(dateKey) || 0);
+        });
+        if (todayEnergy === 0 && dailyProductionByDate[dateKey]) {
+            todayEnergy = Number(dailyProductionByDate[dateKey] || 0);
+        }
+        const totalMesEnergy = (prodDia.data || []).reduce((a, b) => a + b, 0);
+        const totalAnioEnergy = (prodMes.data || []).reduce((a, b) => a + b, 0);
+        const totalGlobalEnergy = (prodAnio.data || []).reduce((a, b) => a + b, 0);
+
+        const kpis = [
+            { label: 'Energía Hoy', value: todayEnergy.toFixed(1), unit: 'kWh', color: [16, 185, 129] },
+            { label: 'Total Mes Actual', value: totalMesEnergy.toFixed(1), unit: 'kWh', color: [37, 99, 235] },
+            { label: 'Total Año en Curso', value: totalAnioEnergy.toFixed(1), unit: 'kWh', color: [245, 158, 11] },
+            { label: 'Histórico 5 Años', value: totalGlobalEnergy.toFixed(0), unit: 'kWh', color: [139, 92, 246] }
+        ];
+        p1Y = drawKpiCards(p1Y, kpis);
+    }
+
+    if (includeWeather) {
+        p1Y = await drawWeatherSection(p1Y);
+    }
+
+    // Sección 1: Gráfica Horaria
+    p1Y = drawSectionTitle(p1Y, '1. Análisis Horario de Generación (Día de Hoy)');
+    const chartHora = renderChartImageForPdf({
+        type: 'line',
+        labels: prodHora.labels,
+        data: prodHora.data,
+        title: 'Potencia horaria del sistema',
+        unit: 'kW',
+        color: '#2563eb',
+        aspect: 3.4
+    });
+    doc.addImage(chartHora, 'PNG', 14, p1Y, 182, 53);
+    p1Y += 58;
+
+    // Sección 2: Gráfica Diaria del Mes
+    p1Y = drawSectionTitle(p1Y, '2. Evolución Diaria (Mes en Curso)');
+    const chartDia = renderChartImageForPdf({
+        type: 'bar',
+        labels: prodDia.labels,
+        data: prodDia.data,
+        title: 'Producción diaria',
+        unit: 'kWh',
+        color: '#0284c7',
+        aspect: 3.4
+    });
+    doc.addImage(chartDia, 'PNG', 14, p1Y, 182, 53);
+    p1Y += 58;
+
+    // PÁGINA 2: ANÁLISIS MENSUAL, ANUAL Y CERTIFICACIÓN TÉCNICA
+    doc.addPage();
+    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.rect(0, 0, 210, 16, 'F');
+    doc.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
+    doc.rect(0, 16, 210, 1.2, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('CRODE SOLAR • INFORME INTEGRAL DE PRODUCCIÓN', 14, 10.5);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(224, 231, 255);
+    doc.text('CONTINUACIÓN: ANÁLISIS MENSUAL Y ANUAL', 196, 10.5, { align: 'right' });
+
+    let p2Y = 24;
+
+    // Sección 3: Gráfica Mensual
+    p2Y = drawSectionTitle(p2Y, '3. Rendimiento Mensual Acumulado (Año en Curso)');
+    const chartMes = renderChartImageForPdf({
+        type: 'bar',
+        labels: prodMes.labels,
+        data: prodMes.data,
+        title: 'Producción mensual',
+        unit: 'kWh',
+        color: '#16a34a',
+        aspect: 3.4
+    });
+    doc.addImage(chartMes, 'PNG', 14, p2Y, 182, 53);
+    p2Y += 58;
+
+    // Sección 4: Gráfica Anual
+    p2Y = drawSectionTitle(p2Y, '4. Histórico Anual de Generación (Últimos 5 Años)');
+    const chartAnio = renderChartImageForPdf({
+        type: 'bar',
+        labels: prodAnio.labels,
+        data: prodAnio.data,
+        title: 'Producción anual',
+        unit: 'kWh',
+        color: '#ea580c',
+        aspect: 3.4
+    });
+    doc.addImage(chartAnio, 'PNG', 14, p2Y, 182, 53);
+    p2Y += 58;
+
+    // Tabla consolidada compacta si se solicita
+    if (includeDataTable && typeof doc.autoTable === 'function') {
+        p2Y = drawSectionTitle(p2Y, 'Resumen Numérico Comparativo (Meses y Años)');
+        
+        // Tabla comparativa de meses
+        const mesLabels = prodMes.labels;
+        const mesData = prodMes.data || [];
+        const tableBody = mesLabels.map((m, idx) => [
+            m,
+            `${Number(mesData[idx] || 0).toFixed(1)} kWh`,
+            prodAnio.labels[idx] ? `${prodAnio.labels[idx]}` : '-',
+            prodAnio.labels[idx] ? `${Number(prodAnio.data[idx] || 0).toFixed(1)} kWh` : '-'
+        ]);
+
+        doc.autoTable({
+            startY: p2Y,
+            head: [['Mes', 'Producción Mes (kWh)', 'Año', 'Producción Anual (kWh)']],
+            body: tableBody,
+            theme: 'grid',
+            headStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
+            styles: { fontSize: 7, cellPadding: 1.5, textColor: [30, 41, 59] },
+            margin: { left: 14, right: 14 }
+        });
+        p2Y = doc.lastAutoTable.finalY + 8;
+    }
+
+    // Bloque de Firma y Validación Técnica
+    if (p2Y + 25 > 280) {
+        doc.addPage();
+        p2Y = 30;
+    }
+
+    const signY = Math.max(p2Y + 8, 256);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.4);
+    doc.line(25, signY, 85, signY);
+    doc.line(125, signY, 185, signY);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+    doc.text('RESPONSABLE TÉCNICO', 55, signY + 4.5, { align: 'center' });
+    doc.text('SELLO Y VALIDACIÓN CRODE', 155, signY + 4.5, { align: 'center' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
+    doc.text(usuarioActual?.nombre || 'Técnico de Planta', 55, signY + 8.5, { align: 'center' });
+    doc.text('Centro Regional de Optimización y Desarrollo de Equipo', 155, signY + 8.5, { align: 'center' });
+
+    stampFooters();
+    doc.save(`Reporte_Solar_Integral_CRODE_${dateKey}.pdf`);
+}
+
+function initExportPdfModal() {
+    const modal = document.getElementById('modalExportPdf');
+    const btnOpen = document.getElementById('btnExport');
+    const btnClose = document.getElementById('closeExportPdfModal');
+    const btnCancel = document.getElementById('btnCancelExportPdf');
+    const btnConfirm = document.getElementById('btnConfirmExportPdf');
+
+    const scopeCardCurrent = document.getElementById('scopeCardCurrent');
+    const scopeCardAll = document.getElementById('scopeCardAll');
+    const radioCurrent = scopeCardCurrent?.querySelector('input[type="radio"]');
+    const radioAll = scopeCardAll?.querySelector('input[type="radio"]');
+    const periodButtons = document.querySelectorAll('#exportPeriodSelector .stats-period-btn');
+
+    let activeModalRange = 'hora';
+
+    function setActiveModalRange(range) {
+        activeModalRange = range || 'hora';
+        periodButtons.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.exportRange === activeModalRange);
+        });
+    }
+
+    periodButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            setActiveModalRange(btn.dataset.exportRange);
+            updateScopeCards('current');
+        });
+    });
+
+    function updateScopeCards(selectedVal) {
+        if (selectedVal === 'current') {
+            scopeCardCurrent?.classList.add('active');
+            scopeCardAll?.classList.remove('active');
+            if (radioCurrent) radioCurrent.checked = true;
+        } else {
+            scopeCardAll?.classList.add('active');
+            scopeCardCurrent?.classList.remove('active');
+            if (radioAll) radioAll.checked = true;
+        }
+    }
+
+    scopeCardCurrent?.addEventListener('click', () => updateScopeCards('current'));
+    scopeCardAll?.addEventListener('click', () => updateScopeCards('all'));
+
+    btnOpen?.addEventListener('click', () => {
+        const curRange = getSelectedStatsRange();
+        setActiveModalRange(curRange);
+        updateScopeCards('current');
+        modal?.classList.add('open');
+    });
+
+    const closeModal = () => modal?.classList.remove('open');
+    btnClose?.addEventListener('click', closeModal);
+    btnCancel?.addEventListener('click', closeModal);
+    modal?.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+
+    btnConfirm?.addEventListener('click', async () => {
+        const scope = document.querySelector('input[name="exportScope"]:checked')?.value || 'current';
+        const requestedRange = activeModalRange;
+        const includeKpis = !!document.getElementById('chkKpis')?.checked;
+        const includeInverters = !!document.getElementById('chkInverters')?.checked;
+        const includeDataTable = !!document.getElementById('chkDataTable')?.checked;
+        const includeWeather = !!document.getElementById('chkWeather')?.checked;
+
+        const btnText = document.getElementById('btnExportPdfText');
+        const originalText = btnText ? btnText.textContent : 'Generar y Descargar PDF';
+
+        try {
+            btnConfirm.disabled = true;
+            if (btnText) {
+                btnText.innerHTML = '<span class="spinner" style="display:inline-block;width:13px;height:13px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;margin-right:6px;vertical-align:middle;"></span> Generando...';
+            }
+
+            await exportProductionPdf({
+                scope,
+                requestedRange,
+                includeKpis,
+                includeInverters,
+                includeDataTable,
+                includeWeather
+            });
+
+            closeModal();
+        } catch (error) {
+            console.error('❌ Error al exportar PDF:', error);
+            alert(`Ocurrió un error al generar el PDF: ${error.message || error}`);
+        } finally {
+            btnConfirm.disabled = false;
+            if (btnText) btnText.textContent = originalText;
+        }
+    });
+}
+
+initExportPdfModal();
 
 document.getElementById('btnAddRule')?.addEventListener('click', () => {
     const nombre = prompt('Nombre de la nueva regla de monitoreo:');
@@ -1612,6 +2394,14 @@ async function initDashboard() {
     console.log('🚀 Inicializando Dashboard...');
     console.log('👤 Usuario:', usuarioActual?.nombre || 'Invitado');
     console.log('📋 Rol:', usuarioActual?.rol || 'Sin rol');
+
+    // Restricción de permisos: Técnicos y Clientes no pueden agregar inversores
+    if (usuarioActual?.rol !== 'admin') {
+        const btnAdd = document.getElementById('btnAddInverter');
+        if (btnAdd) btnAdd.remove();
+        const modalInv = document.getElementById('modalInverter');
+        if (modalInv) modalInv.remove();
+    }
 
     const restoredCache = restoreDashboardCache();
     if (restoredCache) {

@@ -308,16 +308,37 @@
         return data;
     }
 
-    async function getLecturasByInversor(inversorId, limit = 100) {
+    async function getLecturasByInversor(inversorId, limit = 3000) {
         const client = ensureClient();
-        const { data, error } = await client
-            .from('lecturas_historicas')
-            .select('*')
-            .eq('inversor_id', inversorId)
-            .order('timestamp', { ascending: false })
-            .limit(limit);
-        if (error) throw error;
-        return data;
+        if (limit <= 1000) {
+            const { data, error } = await client
+                .from('lecturas_historicas')
+                .select('timestamp, energia_dia, potencia_ac, estado_operativo')
+                .eq('inversor_id', inversorId)
+                .order('timestamp', { ascending: false })
+                .limit(limit);
+            if (error) throw error;
+            return data || [];
+        }
+
+        let allData = [];
+        let from = 0;
+        const pageSize = 1000;
+        while (allData.length < limit) {
+            const to = Math.min(from + pageSize - 1, limit - 1);
+            const { data, error } = await client
+                .from('lecturas_historicas')
+                .select('timestamp, energia_dia, potencia_ac, estado_operativo')
+                .eq('inversor_id', inversorId)
+                .order('timestamp', { ascending: false })
+                .range(from, to);
+            if (error) throw error;
+            if (!data || data.length === 0) break;
+            allData = allData.concat(data);
+            if (data.length < pageSize) break;
+            from += pageSize;
+        }
+        return allData;
     }
 
     async function getUltimaLectura(inversorId) {
