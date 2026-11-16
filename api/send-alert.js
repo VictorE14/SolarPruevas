@@ -1,4 +1,4 @@
-// api/send-alert.js - Serverless function para Vercel (Email Resend + WhatsApp Twilio / CallMeBot)
+// api/send-alert.js - Serverless function para Vercel (Email Resend + Telegram Bot)
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -16,9 +16,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: 'Método no permitido' });
   }
 
-  const { inversorNombre, tipo, mensaje, fecha, destinatario, whatsappNumero } = req.body || {};
+  const { inversorNombre, tipo, mensaje, fecha, destinatario, telegramChatId } = req.body || {};
 
-  const results = { email: null, whatsapp: null };
+  const results = { email: null, telegram: null };
 
   // ==========================================
   // 1. ENVÍO DE CORREO ELECTRÓNICO (RESEND)
@@ -89,24 +89,29 @@ export default async function handler(req, res) {
   }
 
   // ==========================================
-  // 2. ENVÍO DE WHATSAPP (CALLMEBOT API O TWILIO)
+  // 2. ENVÍO DE NOTIFICACIÓN A TELEGRAM BOT
   // ==========================================
-  const targetPhone = whatsappNumero || process.env.ALERT_WHATSAPP_RECIPIENT;
-  const callmebotApiKey = process.env.CALLMEBOT_API_KEY;
+  const tgBotToken = process.env.TELEGRAM_BOT_TOKEN;
+  const tgChatId = telegramChatId || process.env.TELEGRAM_CHAT_ID;
 
-  if (targetPhone && callmebotApiKey) {
+  if (tgBotToken && tgChatId) {
     try {
-      // Limpiar formato del teléfono (solo dígitos)
-      const cleanPhone = targetPhone.replace(/[\s\+\-]/g, '');
-      const textMsg = encodeURIComponent(
-        `☀️ *ALERTA CRODE SOLAR*\n\n⚠️ *Incidencia*: ${tipo || 'Desconexión'}\n📍 *Inversor*: ${inversorNombre || 'Inversor'}\n📝 *Detalle*: ${mensaje || 'Equipo fuera de línea'}\n⏰ *Fecha*: ${fecha || new Date().toLocaleTimeString()}\n\n🔗 Ver panel: https://solar-pruevas.vercel.app/monitor.html`
-      );
-      const cmbUrl = `https://api.callmebot.com/whatsapp.php?phone=${cleanPhone}&text=${textMsg}&apikey=${callmebotApiKey}`;
-      const cmbRes = await fetch(cmbUrl);
-      const cmbText = await cmbRes.text();
-      results.whatsapp = { provider: 'callmebot', status: cmbRes.status, response: cmbText };
+      const tgText = `☀️ *ALERTA CRODE SOLAR*\n\n⚠️ *Incidencia*: ${tipo || 'Desconexión'}\n📍 *Inversor*: ${inversorNombre || 'Inversor'}\n📝 *Detalle*: ${mensaje || 'Equipo fuera de línea'}\n⏰ *Fecha*: ${fecha || new Date().toLocaleTimeString()}\n\n🔗 [Abrir Dashboard](https://solar-pruevas.vercel.app/monitor.html)`;
+
+      const tgUrl = `https://api.telegram.org/bot${tgBotToken}/sendMessage`;
+      const tgRes = await fetch(tgUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: tgChatId,
+          text: tgText,
+          parse_mode: 'Markdown'
+        })
+      });
+
+      results.telegram = await tgRes.json();
     } catch (e) {
-      results.whatsapp = { provider: 'callmebot', error: e.message };
+      results.telegram = { error: e.message };
     }
   }
 
