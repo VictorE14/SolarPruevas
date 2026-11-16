@@ -32,6 +32,105 @@
         return supabase;
     }
 
+    async function notifyAlertRecipients(alertId, alertData = null) {
+        // 1. Enviar notificación por Vercel Serverless Function con Resend
+        try {
+            let invNombre = 'Inversor CRODE';
+            if (alertData?.inversorId) {
+                try {
+                    const client = ensureClient();
+                    const { data: inv } = await client.from('inversores').select('nombre').eq('id', alertData.inversorId).maybeSingle();
+                    if (inv?.nombre) invNombre = inv.nombre;
+                } catch (_) {}
+            }
+
+            const payload = {
+                alertId: alertId,
+                inversorNombre: invNombre,
+                tipo: alertData?.tipo || 'Desconexión',
+                mensaje: alertData?.mensaje || 'El inversor ha dejado de responder o está fuera de línea.',
+                fecha: new Date().toLocaleString('es-MX', { timeZone: 'America/Cancun' })
+            };
+
+            fetch('/api/send-alert', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).then(async r => {
+                const res = await r.json();
+                if (r.ok) {
+                    console.log('📧 Correo de alerta enviado exitosamente vía Vercel/Resend:', res);
+                } else {
+                    console.warn('⚠️ No se pudo enviar por Vercel/Resend:', res);
+                }
+            }).catch(e => {
+                console.warn('⚠️ Endpoint /api/send-alert no alcanzable (modo local o sin deploy):', e.message);
+            });
+        } catch (vercelErr) {
+            console.warn('Aviso en notificación Vercel:', vercelErr);
+        }
+
+        // 2. Intentar también vía Supabase Edge Function si estuviera disponible
+        try {
+            const client = ensureClient();
+            await client.functions.invoke('send-alert-notification', { body: { alertId } });
+        } catch (_) {}
+    }
+
+    async function getOwnNotificationSettings(userId, emailFallback = '') {
+        const client = ensureClient();
+        try {
+            const { data, error } = await client
+                .from('preferencias_notificaciones')
+                .select('email_destino,whatsapp_numero,email_habilitado,whatsapp_habilitado,whatsapp_consentimiento')
+                .eq('usuario_id', userId)
+                .maybeSingle();
+            if (error) throw error;
+            return {
+                email_destino: data?.email_destino || emailFallback,
+                whatsapp_numero: data?.whatsapp_numero || '',
+                email_habilitado: data?.email_habilitado ?? true,
+                whatsapp_habilitado: data?.whatsapp_habilitado ?? false,
+                whatsapp_consentimiento: data?.whatsapp_consentimiento ?? false,
+            };
+        } catch (err) {
+            console.warn('Tabla preferencias_notificaciones no disponible en la BD. Usando almacenamiento local/valores por defecto:', err.message);
+            const localKey = `crode_notify_prefs_${userId}`;
+            const localData = JSON.parse(localStorage.getItem(localKey) || '{}');
+            return {
+                email_destino: localData.email_destino || emailFallback,
+                whatsapp_numero: localData.whatsapp_numero || '',
+                email_habilitado: localData.email_habilitado ?? true,
+                whatsapp_habilitado: localData.whatsapp_habilitado ?? false,
+                whatsapp_consentimiento: localData.whatsapp_consentimiento ?? false,
+            };
+        }
+    }
+
+    async function saveOwnNotificationSettings(userId, settings) {
+        const client = ensureClient();
+        try {
+            const { error } = await client
+                .from('preferencias_notificaciones')
+                .upsert({
+                    usuario_id: userId,
+                    email_destino: settings.email_destino || null,
+                    whatsapp_numero: settings.whatsapp_numero || null,
+                    email_habilitado: settings.email_habilitado,
+                    whatsapp_habilitado: settings.whatsapp_habilitado,
+                    whatsapp_consentimiento: settings.whatsapp_consentimiento,
+                    updated_at: new Date().toISOString(),
+                }, { onConflict: 'usuario_id' });
+            if (error) throw error;
+            return getOwnNotificationSettings(userId);
+        } catch (err) {
+            console.warn('No se pudo guardar preferencias en Supabase (tabla no creada). Guardando localmente:', err.message);
+            const localKey = `crode_notify_prefs_${userId}`;
+            localStorage.setItem(localKey, JSON.stringify(settings));
+            return settings;
+        }
+    }
+
     async function getUsuarios() {
         const client = ensureClient();
         const { data, error } = await client
@@ -563,6 +662,7 @@
             console.error('❌ Error al crear alerta:', error);
             throw error;
         }
+        await notifyAlertRecipients(data.id, { inversorId, tipo, mensaje });
         return data;
     }
 
@@ -710,6 +810,8 @@
         crearAlerta,
         autoResolverAlerta,
         evaluarAlertasInversor,
+        getOwnNotificationSettings,
+        saveOwnNotificationSettings,
         registrarLog,
         getLogs,
         supabase

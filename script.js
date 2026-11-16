@@ -1574,20 +1574,30 @@ function renderApiStatus() {
     }).join('');
 }
 
-function loadConfigurationPreferences() {
+async function loadConfigurationPreferences() {
     const saved = JSON.parse(localStorage.getItem(`crode_preferences_${usuarioActual?.id}`) || '{}');
     ['modbusPort', 'modbusTimeout', 'modbusInterval'].forEach(id => {
         const element = document.getElementById(id);
         if (element && saved[id] !== undefined) element.value = saved[id];
     });
-    ['notifyEmail', 'notifyTelegram'].forEach(id => {
-        const element = document.getElementById(id);
-        if (element) element.checked = Boolean(saved[id]);
-    });
     const profileName = document.getElementById('perfilNombre');
     if (profileName) profileName.value = usuarioActual?.nombre || '';
     const email = document.getElementById('perfilEmail');
     if (email) email.value = usuarioActual?.email || '';
+
+    if (usuarioActual?.rol !== 'admin') {
+        try {
+            const settings = await db.getOwnNotificationSettings(usuarioActual.id, usuarioActual.email);
+            document.getElementById('notifyEmailAddress').value = settings.email_destino;
+            document.getElementById('notifyWhatsappNumber').value = settings.whatsapp_numero;
+            document.getElementById('notifyEmail').checked = settings.email_habilitado;
+            document.getElementById('notifyWhatsapp').checked = settings.whatsapp_habilitado;
+            document.getElementById('notifyWhatsappConsent').checked = settings.whatsapp_consentimiento;
+        } catch (error) {
+            console.error('No se pudieron cargar las preferencias de notificación:', error);
+            alert(`No se pudieron cargar las preferencias de notificación: ${error.message}`);
+        }
+    }
 }
 
 function saveConfigurationPreferences() {
@@ -1596,10 +1606,6 @@ function saveConfigurationPreferences() {
     ['modbusPort', 'modbusTimeout', 'modbusInterval'].forEach(id => {
         const element = document.getElementById(id);
         if (element) current[id] = element.value;
-    });
-    ['notifyEmail', 'notifyTelegram'].forEach(id => {
-        const element = document.getElementById(id);
-        if (element) current[id] = element.checked;
     });
     localStorage.setItem(key, JSON.stringify(current));
 }
@@ -1635,9 +1641,47 @@ document.getElementById('saveModbus')?.addEventListener('click', () => {
     alert('Preferencias Modbus guardadas para este usuario.');
 });
 
-document.getElementById('saveNotifications')?.addEventListener('click', () => {
-    saveConfigurationPreferences();
-    alert('Preferencias de alertas guardadas.');
+document.getElementById('saveNotifications')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    const settings = {
+        email_destino: document.getElementById('notifyEmailAddress').value.trim().toLowerCase(),
+        whatsapp_numero: document.getElementById('notifyWhatsappNumber').value.trim(),
+        email_habilitado: document.getElementById('notifyEmail').checked,
+        whatsapp_habilitado: document.getElementById('notifyWhatsapp').checked,
+        whatsapp_consentimiento: document.getElementById('notifyWhatsappConsent').checked
+    };
+
+    if (settings.email_habilitado && !settings.email_destino) {
+        alert('Ingresa un correo para recibir alertas.');
+        return;
+    }
+    if (settings.email_destino && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(settings.email_destino)) {
+        alert('Ingresa un correo válido para recibir alertas.');
+        return;
+    }
+    if (settings.whatsapp_numero && !/^\+[1-9]\d{7,14}$/.test(settings.whatsapp_numero)) {
+        alert('Ingresa un teléfono WhatsApp en formato internacional, por ejemplo +521234567890.');
+        return;
+    }
+    if (settings.whatsapp_habilitado && !settings.whatsapp_numero) {
+        alert('Ingresa tu número de WhatsApp para activar las alertas.');
+        return;
+    }
+    if (settings.whatsapp_habilitado && !settings.whatsapp_consentimiento) {
+        alert('Confirma que aceptas recibir alertas por WhatsApp.');
+        return;
+    }
+
+    button.disabled = true;
+    try {
+        await db.saveOwnNotificationSettings(usuarioActual.id, settings);
+        alert('Preferencias de alertas guardadas.');
+    } catch (error) {
+        console.error('No se pudieron guardar las preferencias de notificación:', error);
+        alert(error.message || 'No se pudieron guardar las preferencias de notificación.');
+    } finally {
+        button.disabled = false;
+    }
 });
 
 // ============================================================

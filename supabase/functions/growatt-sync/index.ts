@@ -8,6 +8,7 @@ declare const Deno: {
 };
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { sendAlertNotifications } from '../_shared/notifications.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -464,13 +465,19 @@ async function syncAlert(
         .limit(1);
 
       if (!existing || existing.length === 0) {
-        await admin.from('alertas').insert({
+        const { data: alert, error } = await admin.from('alertas').insert({
           inversor_id: inverterId,
           tipo,
           mensaje: message,
           fecha: new Date().toISOString(),
           resuelta: false,
-        });
+        }).select('id,inversor_id,tipo,mensaje,fecha').single();
+        if (error) throw error;
+        try {
+          await sendAlertNotifications(admin, alert);
+        } catch (notificationError) {
+          console.error(`Alert ${alert.id} was created but email delivery failed:`, notificationError);
+        }
       }
     } else {
       // Auto-resolución (C): Cuando la condición se normaliza, cerrar alerta automáticamente

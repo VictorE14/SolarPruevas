@@ -8,6 +8,7 @@ declare const Deno: {
 };
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { sendAlertNotifications } from '../_shared/notifications.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,8 +17,8 @@ const corsHeaders = {
 };
 
 const DEFAULT_HUAWEI_URL = 'https://la5.fusionsolar.huawei.com';
-const DEFAULT_HUAWEI_USER = 'brima_api';
-const DEFAULT_HUAWEI_PASS = 'Brima2026*';
+const DEFAULT_HUAWEI_USER = Deno.env.get('HUAWEI_DEFAULT_USERNAME') || '';
+const DEFAULT_HUAWEI_PASS = Deno.env.get('HUAWEI_DEFAULT_PASSWORD') || '';
 
 // Token cache en memoria de la Edge Function
 let cachedToken: string | null = null;
@@ -51,6 +52,9 @@ async function getHuaweiToken(
   systemCode: string,
   forceRefresh = false
 ): Promise<string> {
+  if (!userName.trim() || !systemCode.trim()) {
+    throw new Error('Configura las credenciales de Huawei en el inversor o como secretos de la función.');
+  }
   const now = Date.now();
 
   if (!forceRefresh) {
@@ -766,13 +770,19 @@ async function syncAlert(
         .limit(1);
 
       if (!existing || existing.length === 0) {
-        await admin.from('alertas').insert({
+        const { data: alert, error } = await admin.from('alertas').insert({
           inversor_id: inverterId,
           tipo,
           mensaje: message,
           fecha: new Date().toISOString(),
           resuelta: false,
-        });
+        }).select('id,inversor_id,tipo,mensaje,fecha').single();
+        if (error) throw error;
+        try {
+          await sendAlertNotifications(admin, alert);
+        } catch (notificationError) {
+          console.error(`Alert ${alert.id} was created but email delivery failed:`, notificationError);
+        }
       }
     } else {
       await admin

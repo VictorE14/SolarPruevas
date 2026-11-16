@@ -234,7 +234,27 @@
                     <div class="settings-card"><h3>Configuración Modbus TCP</h3><div class="form-group"><label>Puerto por defecto</label><input type="number" value="502" class="form-control" id="modbusPort"></div><div class="form-group"><label>Timeout (ms)</label><input type="number" value="5000" class="form-control" id="modbusTimeout"></div><div class="form-group"><label>Frecuencia de lectura (seg)</label><input type="number" value="10" class="form-control" id="modbusInterval"></div><button class="btn-primary" id="saveModbus">Guardar</button></div>
                 </div>
                 <div id="tab-notificaciones" class="tab-content">
-                    <div class="settings-card"><h3>Preferencias de alertas</h3><div class="form-group"><label><input type="checkbox" id="notifyEmail"> Avisarme de alertas por correo</label></div><div class="form-group"><label><input type="checkbox" id="notifyTelegram"> Avisarme por Telegram</label></div><button class="btn-primary" id="saveNotifications">Guardar Preferencias</button><p style="color:var(--text-secondary);font-size:12px;">El envío real requiere configurar un servicio backend de notificaciones.</p></div>
+                    <div class="settings-card">
+                        <h3>Notificaciones de alertas</h3>
+                        <div class="form-group">
+                            <label for="notifyEmailAddress">Correo para recibir alertas</label>
+                            <input type="email" id="notifyEmailAddress" class="form-control" placeholder="tu-correo@ejemplo.com">
+                        </div>
+                        <div class="form-group">
+                            <label><input type="checkbox" id="notifyEmail"> Enviar alertas por correo</label>
+                        </div>
+                        <div class="form-group">
+                            <label for="notifyWhatsappNumber">Número de WhatsApp (formato internacional)</label>
+                            <input type="tel" id="notifyWhatsappNumber" class="form-control" placeholder="+521234567890">
+                        </div>
+                        <div class="form-group">
+                            <label><input type="checkbox" id="notifyWhatsapp"> Enviar alertas por WhatsApp</label>
+                        </div>
+                        <div class="form-group">
+                            <label><input type="checkbox" id="notifyWhatsappConsent"> Acepto recibir alertas de operación por WhatsApp en este número</label>
+                        </div>
+                        <button class="btn-primary" id="saveNotifications">Guardar Preferencias</button>
+                    </div>
                 </div>
             </section>
 

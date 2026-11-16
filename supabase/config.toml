@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.huawei-sync]
 verify_jwt = false
+
+[functions.send-alert-notification]
+verify_jwt = false

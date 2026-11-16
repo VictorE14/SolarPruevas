@@ -4,7 +4,7 @@
             // IMPORTANTE: la clave publishable/anónima es pública y puede ir en el frontend.
             // Nunca agregues service_role_key ni secretos aquí.
             url: 'https://nojpqnclmhztwwwjqxeh.supabase.co',
-            anonKey: 'sb_publishable_c1dQXRr2bI5BwuZ2O2WViw_YVTxEs1M'
+            anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vanBxbmNsbWh6dHd3d2pxeGVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUyOTI5NjMsImV4cCI6MjEwMDg2ODk2M30.VbgGn_QWdZvF4mYRbU_Vg1Zi_O-JMMbSrWMsmsdx5vw'
         },
         weather: {
             openWeatherApiKey: '',
