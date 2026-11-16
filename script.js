@@ -150,7 +150,7 @@ function checkSession() {
 //  ADMIN - CERRAR SESIÓN (CORREGIDO)
 // ============================================================
 
-document.getElementById('logoutBtn')?.addEventListener('click', function() {
+document.getElementById('logoutBtn')?.addEventListener('click', function () {
     if (confirm('¿Cerrar sesión?')) {
         if (window.CRODE_SESSION && typeof window.CRODE_SESSION.clear === 'function') {
             window.CRODE_SESSION.clear();
@@ -176,13 +176,13 @@ async function loadInverters() {
             dailyProductionByInverter.clear();
             inverterLastReadingSignature.clear();
         }
-        
+
         if (usuarioActual.rol === 'admin') {
             data = await db.getAllInversores();
         } else {
             data = await db.getInversoresByUsuario(usuarioActual.id);
         }
-        
+
         const previousInverters = new Map(inverters.map(inverter => [inverter.id, inverter]));
         inverters = data.map(inv => ({
             ...(previousInverters.get(inv.id) || {}),
@@ -202,7 +202,7 @@ async function loadInverters() {
             deviceSerial: inv.device_serial || null,
             apiToken: inv.api_token || null
         }));
-        
+
         let hasAnyNewData = (inverterLastReadingSignature.size === 0);
 
         await Promise.all(inverters.map(async (inv) => {
@@ -312,7 +312,7 @@ function renderDashboardKPIs() {
     document.getElementById('totalPower').innerHTML = `${totalPower.toFixed(1)} <small>kW</small>`;
     document.getElementById('totalEnergy').innerHTML = `${totalEnergy.toFixed(0)} <small>kWh</small>`;
     document.getElementById('activeCount').innerHTML = `${online} <small>/ ${total}</small>`;
-    
+
     const fill = document.querySelector('.progress-fill');
     if (fill) fill.style.width = total > 0 ? `${(online / total) * 100}%` : '0%';
 }
@@ -386,13 +386,13 @@ function renderFullInverterTable() {
 //  ACCIONES
 // ============================================================
 
-window.viewInverter = function(id) {
+window.viewInverter = function (id) {
     const inv = inverters.find(i => i.id === id);
     if (!inv) return;
     alert(`📋 Detalle de ${inv.nombre}\nMarca: ${inv.marca}\nModelo: ${inv.modelo}\nUbicación: ${inv.ubicacion}\nPotencia: ${inv.potencia} kW\nEnergía Hoy: ${inv.energiaHoy} kWh\nEstado: ${inv.estado}`);
 };
 
-window.resolverAlertaUI = async function(id) {
+window.resolverAlertaUI = async function (id) {
     if (confirm('¿Marcar esta alerta como resuelta?')) {
         try {
             await db.resolverAlerta(id, usuarioActual?.id);
@@ -484,7 +484,7 @@ function renderAlertas() {
 
     const renderRow = (alerta, active) => {
         const dateFormatted = alerta.fecha ? new Date(alerta.fecha).toLocaleString('es-MX') : 'Sin fecha';
-        const resolutionNote = alerta.resuelta_por 
+        const resolutionNote = alerta.resuelta_por
             ? '<span class="status-badge" style="color:#0284c7;"><span class="dot" style="background:#0284c7;"></span> Resuelta manual (Técnico)</span>'
             : '<span class="status-badge" style="color:#16a34a;"><span class="dot online"></span> Auto-resuelta (Sistema)</span>';
 
@@ -495,8 +495,8 @@ function renderAlertas() {
                 <td>${escapeAlertText(alerta.mensaje || 'Sin descripción')}</td>
                 <td><small style="color:#64748b;">${escapeAlertText(dateFormatted)}</small></td>
                 ${active
-                    ? `<td><button class="btn-outline" style="padding:4px 10px;font-size:12px;" onclick="resolverAlertaUI('${escapeAlertText(alerta.id)}')"><i class="fas fa-check"></i> Resolver</button></td>`
-                    : `<td>${resolutionNote}</td>`}
+                ? `<td><button class="btn-outline" style="padding:4px 10px;font-size:12px;" onclick="resolverAlertaUI('${escapeAlertText(alerta.id)}')"><i class="fas fa-check"></i> Resolver</button></td>`
+                : `<td>${resolutionNote}</td>`}
             </tr>`;
     };
 
@@ -598,7 +598,7 @@ function renderReglas() {
     }).join('');
 }
 
-window.toggleReglaUI = function(ruleId) {
+window.toggleReglaUI = function (ruleId) {
     const rules = getStoredRules();
     const rule = rules.find(r => r.id === ruleId);
     if (rule) {
@@ -738,7 +738,7 @@ async function fetchAllWeatherData() {
         weather: weather || { temperatura: '--', sensacion_termica: '--', humedad: '--', clima: 'No disponible', icono: '01d', viento: '--', ciudad: 'Mérida', pais: 'MX' },
         radiation: radiation || { radiacion: '--', timestamp: new Date().toISOString(), source: 'No disponible' }
     };
-    try { localStorage.setItem('weatherData', JSON.stringify({ ...result, lastUpdated: new Date().toISOString() })); } catch (e) {}
+    try { localStorage.setItem('weatherData', JSON.stringify({ ...result, lastUpdated: new Date().toISOString() })); } catch (e) { }
     return result;
 }
 
@@ -793,7 +793,7 @@ async function initWeatherWidget() {
                 console.log('🌤️ Clima cargado desde caché');
                 return;
             }
-        } catch (e) {}
+        } catch (e) { }
     }
     const weatherData = await fetchAllWeatherData();
     if (weatherData) renderWeatherWidget(weatherData);
@@ -1558,11 +1558,11 @@ function renderApiStatus() {
     body.innerHTML = inverters.map(inverter => {
         const status = inverter.apiStatus === 'connected' ? 'Conectada' :
             inverter.apiStatus === 'retrying' ? 'Reintentando en 30 s' :
-            inverter.apiStatus === 'error' ? 'Error' :
-                inverter.apiUrl ? 'Esperando actualización' : 'Sin configurar';
+                inverter.apiStatus === 'error' ? 'Error' :
+                    inverter.apiUrl ? 'Esperando actualización' : 'Sin configurar';
         const color = inverter.apiStatus === 'connected' ? '#16a34a' :
             inverter.apiStatus === 'retrying' ? '#d97706' :
-            inverter.apiStatus === 'error' ? '#dc2626' : '#64748b';
+                inverter.apiStatus === 'error' ? '#dc2626' : '#64748b';
         return `
             <tr>
                 <td><strong>${inverter.nombre}</strong></td>
@@ -1589,7 +1589,7 @@ async function loadConfigurationPreferences() {
         try {
             const settings = await db.getOwnNotificationSettings(usuarioActual.id, usuarioActual.email);
             if (document.getElementById('notifyEmailAddress')) document.getElementById('notifyEmailAddress').value = settings.email_destino || '';
-            if (document.getElementById('notifyTelegramChatId')) document.getElementById('notifyTelegramChatId').value = settings.telegram_chat_id || settings.whatsapp_numero || '1234397448';
+            if (document.getElementById('notifyTelegramChatId')) document.getElementById('notifyTelegramChatId').value = settings.telegram_chat_id || '';
             if (document.getElementById('notifyEmail')) document.getElementById('notifyEmail').checked = settings.email_habilitado ?? true;
             if (document.getElementById('notifyTelegram')) document.getElementById('notifyTelegram').checked = settings.telegram_habilitado ?? true;
             if (document.getElementById('notifyTelegramConsent')) document.getElementById('notifyTelegramConsent').checked = settings.telegram_consentimiento ?? true;
@@ -1645,12 +1645,9 @@ document.getElementById('saveNotifications')?.addEventListener('click', async ev
     const settings = {
         email_destino: document.getElementById('notifyEmailAddress')?.value.trim().toLowerCase() || '',
         telegram_chat_id: document.getElementById('notifyTelegramChatId')?.value.trim() || '',
-        whatsapp_numero: document.getElementById('notifyTelegramChatId')?.value.trim() || '',
         email_habilitado: document.getElementById('notifyEmail')?.checked ?? true,
         telegram_habilitado: document.getElementById('notifyTelegram')?.checked ?? true,
         telegram_consentimiento: document.getElementById('notifyTelegramConsent')?.checked ?? true,
-        whatsapp_habilitado: false,
-        whatsapp_consentimiento: false
     };
 
     if (settings.email_habilitado && !settings.email_destino) {
@@ -1663,6 +1660,10 @@ document.getElementById('saveNotifications')?.addEventListener('click', async ev
     }
     if (settings.telegram_habilitado && !settings.telegram_chat_id) {
         alert('Ingresa tu Telegram Chat ID para activar las alertas instantáneas.');
+        return;
+    }
+    if (settings.telegram_chat_id && !/^-?\d+$/.test(settings.telegram_chat_id)) {
+        alert('Ingresa un Telegram Chat ID numérico, no un número de teléfono.');
         return;
     }
     if (settings.telegram_habilitado && !settings.telegram_consentimiento) {
@@ -1681,18 +1682,13 @@ document.getElementById('saveNotifications')?.addEventListener('click', async ev
         button.disabled = false;
     }
 });
-        alert(error.message || 'No se pudieron guardar las preferencias de notificación.');
-    } finally {
-        button.disabled = false;
-    }
-});
 
 // ============================================================
 //  NAVEGACIÓN SPA
 // ============================================================
 
 document.querySelectorAll('.nav-menu a[data-section]').forEach(link => {
-    link.addEventListener('click', function(e) {
+    link.addEventListener('click', function (e) {
         e.preventDefault();
         document.querySelectorAll('.nav-menu a').forEach(a => a.classList.remove('active'));
         this.classList.add('active');
@@ -1723,7 +1719,7 @@ document.querySelectorAll('.nav-menu a[data-section]').forEach(link => {
 
 document.querySelectorAll('.tab-group').forEach(group => {
     group.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function () {
             group.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             const parentSection = this.closest('.page-section');
@@ -1739,7 +1735,7 @@ document.querySelectorAll('.tab-group').forEach(group => {
 //  BOTONES ADICIONALES
 // ============================================================
 
-document.querySelector('.chart-expand-btn')?.addEventListener('click', function() {
+document.querySelector('.chart-expand-btn')?.addEventListener('click', function () {
     const card = this.closest('.chart-card-expandable');
     if (!card) return;
     const expanded = card.classList.toggle('expanded');
@@ -1773,7 +1769,7 @@ function renderChartImageForPdf({ type = 'line', labels = [], data = [], title =
     canvas.width = 1000;
     canvas.height = Math.round(1000 / aspect);
     const ctx = canvas.getContext('2d');
-    
+
     // Fondo blanco sólido para que en el PDF no se transparente
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -2289,7 +2285,7 @@ async function exportProductionPdf({ scope = 'current', requestedRange = null, i
     // Tabla consolidada compacta si se solicita
     if (includeDataTable && typeof doc.autoTable === 'function') {
         p2Y = drawSectionTitle(p2Y, 'Resumen Numérico Comparativo (Meses y Años)');
-        
+
         // Tabla comparativa de meses
         const mesLabels = prodMes.labels;
         const mesData = prodMes.data || [];
@@ -2504,7 +2500,7 @@ async function initDashboard() {
             initStatsChart();
         }
     }
-    
+
     await loadInverters();
     try {
         await loadAlertas();
@@ -2515,22 +2511,22 @@ async function initDashboard() {
         renderAlertas();
         renderDashboardAlerts();
     }
-    
+
     console.log('📊 Inversores cargados:', inverters.length);
-    
+
     renderDashboardKPIs();
     renderDashboardTable();
     renderFullInverterTable();
     loadConfigurationPreferences();
     renderApiStatus();
-    
+
     initDashboardCharts();
     initStatsChart();
     initWeatherWidget();
     startWeatherUpdates();
 
     console.log('ℹ️ La sincronización Growatt está centralizada en el panel de administración.');
-    
+
     if (intervalId) clearInterval(intervalId);
     intervalId = setInterval(async () => {
         const hasNewData = await loadInverters();
@@ -2559,7 +2555,7 @@ async function initDashboard() {
             }
         }
     }, 10000);
-    
+
     console.log('✅ Dashboard inicializado correctamente');
 }
 
@@ -2619,7 +2615,7 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e)
 //  VERIFICAR SESIÓN AL CARGAR
 // ============================================================
 
-document.addEventListener('DOMContentLoaded', async function() {
+document.addEventListener('DOMContentLoaded', async function () {
     initTheme();
     if (checkSession()) {
         await initDashboard();

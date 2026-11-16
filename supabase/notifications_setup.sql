@@ -2,6 +2,9 @@
 create table if not exists public.preferencias_notificaciones (
     usuario_id uuid primary key references public.usuarios(id) on delete cascade,
     email_destino text,
+    telegram_chat_id text,
+    telegram_habilitado boolean not null default false,
+    telegram_consentimiento boolean not null default false,
     whatsapp_numero text,
     email_habilitado boolean not null default true,
     whatsapp_habilitado boolean not null default false,
@@ -14,6 +17,11 @@ create table if not exists public.preferencias_notificaciones (
     constraint preferencias_notificaciones_whatsapp_optin_check
         check (not whatsapp_habilitado or (whatsapp_numero is not null and whatsapp_consentimiento))
 );
+
+alter table public.preferencias_notificaciones
+    add column if not exists telegram_chat_id text,
+    add column if not exists telegram_habilitado boolean not null default false,
+    add column if not exists telegram_consentimiento boolean not null default false;
 
 alter table public.preferencias_notificaciones enable row level security;
 drop policy if exists "Preferencias de notificación para pruebas" on public.preferencias_notificaciones;

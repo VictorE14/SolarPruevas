@@ -37,7 +37,7 @@
         try {
             let invNombre = 'Inversor CRODE';
             let targetEmail = null;
-            let targetPhone = null;
+            let targetTelegramChatId = null;
 
             if (alertData?.inversorId) {
                 try {
@@ -50,8 +50,8 @@
                     if (assignedUserId) {
                         const prefs = await getOwnNotificationSettings(assignedUserId);
                         if (prefs?.email_habilitado && prefs?.email_destino) targetEmail = prefs.email_destino;
-                        if ((prefs?.telegram_habilitado ?? true) && (prefs?.telegram_chat_id || prefs?.whatsapp_numero)) {
-                            targetPhone = prefs.telegram_chat_id || prefs.whatsapp_numero;
+                        if ((prefs?.telegram_habilitado ?? true) && prefs?.telegram_chat_id) {
+                            targetTelegramChatId = prefs.telegram_chat_id;
                         }
                     }
                 } catch (_) {}
@@ -64,7 +64,7 @@
                 mensaje: alertData?.mensaje || 'El inversor ha dejado de responder o está fuera de línea.',
                 fecha: new Date().toLocaleString('es-MX', { timeZone: 'America/Cancun' }),
                 destinatario: targetEmail,
-                telegramChatId: targetPhone || '1234397448'
+                telegramChatId: targetTelegramChatId
             };
 
             fetch('/api/send-alert', {
@@ -74,7 +74,7 @@
             }).then(async r => {
                 const res = await r.json();
                 if (r.ok) {
-                    console.log('🔔 Alertas enviadas exitosamente vía Vercel (Email/WhatsApp):', res);
+                    console.log('🔔 Alertas enviadas exitosamente vía Vercel (Correo/Telegram):', res);
                 } else {
                     console.warn('⚠️ Respuesta de envío:', res);
                 }
@@ -97,12 +97,15 @@
         try {
             const { data, error } = await client
                 .from('preferencias_notificaciones')
-                .select('email_destino,whatsapp_numero,email_habilitado,whatsapp_habilitado,whatsapp_consentimiento')
+                .select('email_destino,email_habilitado,telegram_chat_id,telegram_habilitado,telegram_consentimiento,whatsapp_numero,whatsapp_habilitado,whatsapp_consentimiento')
                 .eq('usuario_id', userId)
                 .maybeSingle();
             if (error) throw error;
             return {
                 email_destino: data?.email_destino || emailFallback,
+                telegram_chat_id: data?.telegram_chat_id || '',
+                telegram_habilitado: data?.telegram_habilitado ?? false,
+                telegram_consentimiento: data?.telegram_consentimiento ?? false,
                 whatsapp_numero: data?.whatsapp_numero || '',
                 email_habilitado: data?.email_habilitado ?? true,
                 whatsapp_habilitado: data?.whatsapp_habilitado ?? false,
@@ -114,6 +117,9 @@
             const localData = JSON.parse(localStorage.getItem(localKey) || '{}');
             return {
                 email_destino: localData.email_destino || emailFallback,
+                telegram_chat_id: localData.telegram_chat_id || '',
+                telegram_habilitado: localData.telegram_habilitado ?? false,
+                telegram_consentimiento: localData.telegram_consentimiento ?? false,
                 whatsapp_numero: localData.whatsapp_numero || '',
                 email_habilitado: localData.email_habilitado ?? true,
                 whatsapp_habilitado: localData.whatsapp_habilitado ?? false,
@@ -130,10 +136,10 @@
                 .upsert({
                     usuario_id: userId,
                     email_destino: settings.email_destino || null,
-                    whatsapp_numero: settings.whatsapp_numero || null,
                     email_habilitado: settings.email_habilitado,
-                    whatsapp_habilitado: settings.whatsapp_habilitado,
-                    whatsapp_consentimiento: settings.whatsapp_consentimiento,
+                    telegram_chat_id: settings.telegram_chat_id || null,
+                    telegram_habilitado: settings.telegram_habilitado,
+                    telegram_consentimiento: settings.telegram_consentimiento,
                     updated_at: new Date().toISOString(),
                 }, { onConflict: 'usuario_id' });
             if (error) throw error;
@@ -141,8 +147,10 @@
         } catch (err) {
             console.warn('No se pudo guardar preferencias en Supabase (tabla no creada). Guardando localmente:', err.message);
             const localKey = `crode_notify_prefs_${userId}`;
-            localStorage.setItem(localKey, JSON.stringify(settings));
-            return settings;
+            const localData = JSON.parse(localStorage.getItem(localKey) || '{}');
+            const savedSettings = { ...localData, ...settings };
+            localStorage.setItem(localKey, JSON.stringify(savedSettings));
+            return savedSettings;
         }
     }
 

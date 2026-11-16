@@ -91,8 +91,8 @@ export default async function handler(req, res) {
   // ==========================================
   // 2. ENVÍO DE NOTIFICACIÓN A TELEGRAM BOT
   // ==========================================
-  const tgBotToken = process.env.TELEGRAM_BOT_TOKEN || '9145195408:AAFnD5gTdPpWdINHNr-iemyw5-2BnSgxXjY';
-  const tgChatId = telegramChatId || process.env.TELEGRAM_CHAT_ID || '1234397448';
+  const tgBotToken = process.env.TELEGRAM_BOT_TOKEN;
+  const tgChatId = String(telegramChatId || '').trim();
 
   if (tgBotToken && tgChatId) {
     try {
