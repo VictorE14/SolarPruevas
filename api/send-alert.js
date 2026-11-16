@@ -1,4 +1,4 @@
-// api/send-alert.js - Serverless function para Vercel (Email con Resend + WhatsApp con Twilio)
+// api/send-alert.js - Serverless function para Vercel (Email Resend + WhatsApp Twilio / CallMeBot)
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -89,39 +89,24 @@ export default async function handler(req, res) {
   }
 
   // ==========================================
-  // 2. ENVÍO DE WHATSAPP (TWILIO)
+  // 2. ENVÍO DE WHATSAPP (CALLMEBOT API O TWILIO)
   // ==========================================
-  const twilioSid = process.env.TWILIO_ACCOUNT_SID;
-  const twilioToken = process.env.TWILIO_AUTH_TOKEN;
-  const twilioFrom = process.env.TWILIO_WHATSAPP_FROM || '+17372508034'; // Tu número Sandbox de Twilio
   const targetPhone = whatsappNumero || process.env.ALERT_WHATSAPP_RECIPIENT;
+  const callmebotApiKey = process.env.CALLMEBOT_API_KEY;
 
-  if (twilioSid && twilioToken && targetPhone) {
+  if (targetPhone && callmebotApiKey) {
     try {
-      // Limpiar formato del teléfono (quitar espacios o guiones)
-      const cleanPhone = targetPhone.replace(/[\s\-]/g, '');
-      const toWhatsApp = cleanPhone.startsWith('whatsapp:') ? cleanPhone : `whatsapp:${cleanPhone}`;
-      const fromWhatsApp = twilioFrom.startsWith('whatsapp:') ? twilioFrom : `whatsapp:${twilioFrom}`;
-
-      const whatsappText = `☀️ *ALERTA CRODE SOLAR*\n\n⚠️ *Incidencia*: ${tipo || 'Desconexión'}\n📍 *Inversor*: ${inversorNombre || 'Inversor'}\n📝 *Detalle*: ${mensaje || 'Equipo fuera de línea'}\n⏰ *Fecha*: ${fecha || new Date().toLocaleTimeString()}\n\n🔗 Ver panel: https://solar-pruevas.vercel.app/monitor.html`;
-
-      const params = new URLSearchParams();
-      params.append('From', fromWhatsApp);
-      params.append('To', toWhatsApp);
-      params.append('Body', whatsappText);
-
-      const twilioRes = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`, {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Basic ' + Buffer.from(`${twilioSid}:${twilioToken}`).toString('base64'),
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: params
-      });
-
-      results.whatsapp = await twilioRes.json();
+      // Limpiar formato del teléfono (solo dígitos)
+      const cleanPhone = targetPhone.replace(/[\s\+\-]/g, '');
+      const textMsg = encodeURIComponent(
+        `☀️ *ALERTA CRODE SOLAR*\n\n⚠️ *Incidencia*: ${tipo || 'Desconexión'}\n📍 *Inversor*: ${inversorNombre || 'Inversor'}\n📝 *Detalle*: ${mensaje || 'Equipo fuera de línea'}\n⏰ *Fecha*: ${fecha || new Date().toLocaleTimeString()}\n\n🔗 Ver panel: https://solar-pruevas.vercel.app/monitor.html`
+      );
+      const cmbUrl = `https://api.callmebot.com/whatsapp.php?phone=${cleanPhone}&text=${textMsg}&apikey=${callmebotApiKey}`;
+      const cmbRes = await fetch(cmbUrl);
+      const cmbText = await cmbRes.text();
+      results.whatsapp = { provider: 'callmebot', status: cmbRes.status, response: cmbText };
     } catch (e) {
-      results.whatsapp = { error: e.message };
+      results.whatsapp = { provider: 'callmebot', error: e.message };
     }
   }
 
