@@ -33,14 +33,25 @@
     }
 
     async function notifyAlertRecipients(alertId, alertData = null) {
-        // 1. Enviar notificación por Vercel Serverless Function con Resend
+        // 1. Enviar notificación por Vercel Serverless Function con Resend (Email) y Twilio (WhatsApp)
         try {
             let invNombre = 'Inversor CRODE';
+            let targetEmail = null;
+            let targetPhone = null;
+
             if (alertData?.inversorId) {
                 try {
                     const client = ensureClient();
-                    const { data: inv } = await client.from('inversores').select('nombre').eq('id', alertData.inversorId).maybeSingle();
+                    const { data: inv } = await client.from('inversores').select('nombre, usuario_id').eq('id', alertData.inversorId).maybeSingle();
                     if (inv?.nombre) invNombre = inv.nombre;
+
+                    // Buscar preferencias del usuario asignado
+                    const assignedUserId = inv?.usuario_id || (window.usuarioActual ? window.usuarioActual.id : null);
+                    if (assignedUserId) {
+                        const prefs = await getOwnNotificationSettings(assignedUserId);
+                        if (prefs?.email_habilitado && prefs?.email_destino) targetEmail = prefs.email_destino;
+                        if (prefs?.whatsapp_habilitado && prefs?.whatsapp_numero) targetPhone = prefs.whatsapp_numero;
+                    }
                 } catch (_) {}
             }
 
@@ -49,7 +60,9 @@
                 inversorNombre: invNombre,
                 tipo: alertData?.tipo || 'Desconexión',
                 mensaje: alertData?.mensaje || 'El inversor ha dejado de responder o está fuera de línea.',
-                fecha: new Date().toLocaleString('es-MX', { timeZone: 'America/Cancun' })
+                fecha: new Date().toLocaleString('es-MX', { timeZone: 'America/Cancun' }),
+                destinatario: targetEmail,
+                whatsappNumero: targetPhone
             };
 
             fetch('/api/send-alert', {
@@ -59,9 +72,9 @@
             }).then(async r => {
                 const res = await r.json();
                 if (r.ok) {
-                    console.log('📧 Correo de alerta enviado exitosamente vía Vercel/Resend:', res);
+                    console.log('🔔 Alertas enviadas exitosamente vía Vercel (Email/WhatsApp):', res);
                 } else {
-                    console.warn('⚠️ No se pudo enviar por Vercel/Resend:', res);
+                    console.warn('⚠️ Respuesta de envío:', res);
                 }
             }).catch(e => {
                 console.warn('⚠️ Endpoint /api/send-alert no alcanzable (modo local o sin deploy):', e.message);
