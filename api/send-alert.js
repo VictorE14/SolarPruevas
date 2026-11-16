@@ -93,7 +93,7 @@ export default async function handler(req, res) {
   // ==========================================
   const twilioSid = process.env.TWILIO_ACCOUNT_SID;
   const twilioToken = process.env.TWILIO_AUTH_TOKEN;
-  const twilioFrom = process.env.TWILIO_WHATSAPP_FROM || '+14155238886'; // Sandbox oficial Twilio
+  const twilioFrom = process.env.TWILIO_WHATSAPP_FROM || '+17372508034'; // Tu número Sandbox de Twilio
   const targetPhone = whatsappNumero || process.env.ALERT_WHATSAPP_RECIPIENT;
 
   if (twilioSid && twilioToken && targetPhone) {
