@@ -1588,14 +1588,13 @@ async function loadConfigurationPreferences() {
     if (usuarioActual?.rol !== 'admin') {
         try {
             const settings = await db.getOwnNotificationSettings(usuarioActual.id, usuarioActual.email);
-            document.getElementById('notifyEmailAddress').value = settings.email_destino;
-            document.getElementById('notifyWhatsappNumber').value = settings.whatsapp_numero;
-            document.getElementById('notifyEmail').checked = settings.email_habilitado;
-            document.getElementById('notifyWhatsapp').checked = settings.whatsapp_habilitado;
-            document.getElementById('notifyWhatsappConsent').checked = settings.whatsapp_consentimiento;
+            if (document.getElementById('notifyEmailAddress')) document.getElementById('notifyEmailAddress').value = settings.email_destino || '';
+            if (document.getElementById('notifyTelegramChatId')) document.getElementById('notifyTelegramChatId').value = settings.telegram_chat_id || settings.whatsapp_numero || '1234397448';
+            if (document.getElementById('notifyEmail')) document.getElementById('notifyEmail').checked = settings.email_habilitado ?? true;
+            if (document.getElementById('notifyTelegram')) document.getElementById('notifyTelegram').checked = settings.telegram_habilitado ?? true;
+            if (document.getElementById('notifyTelegramConsent')) document.getElementById('notifyTelegramConsent').checked = settings.telegram_consentimiento ?? true;
         } catch (error) {
             console.error('No se pudieron cargar las preferencias de notificación:', error);
-            alert(`No se pudieron cargar las preferencias de notificación: ${error.message}`);
         }
     }
 }
@@ -1644,11 +1643,14 @@ document.getElementById('saveModbus')?.addEventListener('click', () => {
 document.getElementById('saveNotifications')?.addEventListener('click', async event => {
     const button = event.currentTarget;
     const settings = {
-        email_destino: document.getElementById('notifyEmailAddress').value.trim().toLowerCase(),
-        whatsapp_numero: document.getElementById('notifyWhatsappNumber').value.trim(),
-        email_habilitado: document.getElementById('notifyEmail').checked,
-        whatsapp_habilitado: document.getElementById('notifyWhatsapp').checked,
-        whatsapp_consentimiento: document.getElementById('notifyWhatsappConsent').checked
+        email_destino: document.getElementById('notifyEmailAddress')?.value.trim().toLowerCase() || '',
+        telegram_chat_id: document.getElementById('notifyTelegramChatId')?.value.trim() || '',
+        whatsapp_numero: document.getElementById('notifyTelegramChatId')?.value.trim() || '',
+        email_habilitado: document.getElementById('notifyEmail')?.checked ?? true,
+        telegram_habilitado: document.getElementById('notifyTelegram')?.checked ?? true,
+        telegram_consentimiento: document.getElementById('notifyTelegramConsent')?.checked ?? true,
+        whatsapp_habilitado: false,
+        whatsapp_consentimiento: false
     };
 
     if (settings.email_habilitado && !settings.email_destino) {
@@ -1659,25 +1661,26 @@ document.getElementById('saveNotifications')?.addEventListener('click', async ev
         alert('Ingresa un correo válido para recibir alertas.');
         return;
     }
-    if (settings.whatsapp_numero && !/^\+[1-9]\d{7,14}$/.test(settings.whatsapp_numero)) {
-        alert('Ingresa un teléfono WhatsApp en formato internacional, por ejemplo +521234567890.');
+    if (settings.telegram_habilitado && !settings.telegram_chat_id) {
+        alert('Ingresa tu Telegram Chat ID para activar las alertas instantáneas.');
         return;
     }
-    if (settings.whatsapp_habilitado && !settings.whatsapp_numero) {
-        alert('Ingresa tu número de WhatsApp para activar las alertas.');
-        return;
-    }
-    if (settings.whatsapp_habilitado && !settings.whatsapp_consentimiento) {
-        alert('Confirma que aceptas recibir alertas por WhatsApp.');
+    if (settings.telegram_habilitado && !settings.telegram_consentimiento) {
+        alert('Confirma que aceptas recibir alertas de operación por Telegram.');
         return;
     }
 
     button.disabled = true;
     try {
         await db.saveOwnNotificationSettings(usuarioActual.id, settings);
-        alert('Preferencias de alertas guardadas.');
+        alert('Preferencias de alertas (Correo y Telegram) guardadas correctamente.');
     } catch (error) {
         console.error('No se pudieron guardar las preferencias de notificación:', error);
+        alert('No se pudieron guardar las preferencias.');
+    } finally {
+        button.disabled = false;
+    }
+});
         alert(error.message || 'No se pudieron guardar las preferencias de notificación.');
     } finally {
         button.disabled = false;

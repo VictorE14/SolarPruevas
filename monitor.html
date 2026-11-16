@@ -235,25 +235,33 @@
                 </div>
                 <div id="tab-notificaciones" class="tab-content">
                     <div class="settings-card">
-                        <h3>Notificaciones de alertas</h3>
-                        <div class="form-group">
-                            <label for="notifyEmailAddress">Correo para recibir alertas</label>
+                        <h3><i class="fas fa-bell" style="color:var(--primary);margin-right:8px;"></i>Notificaciones de alertas</h3>
+                        
+                        <div class="form-group" style="margin-top:16px;">
+                            <label for="notifyEmailAddress"><i class="fas fa-envelope" style="color:#3b82f6;margin-right:6px;"></i>Correo para recibir alertas</label>
                             <input type="email" id="notifyEmailAddress" class="form-control" placeholder="tu-correo@ejemplo.com">
                         </div>
                         <div class="form-group">
-                            <label><input type="checkbox" id="notifyEmail"> Enviar alertas por correo</label>
+                            <label><input type="checkbox" id="notifyEmail"> Enviar alertas por correo electrónico</label>
+                        </div>
+
+                        <hr style="border:none;border-top:1px solid var(--border-color, #e2e8f0);margin:20px 0;">
+
+                        <div class="form-group">
+                            <label for="notifyTelegramChatId"><i class="fab fa-telegram" style="color:#0088cc;margin-right:6px;"></i>Telegram Chat ID (Notificaciones Instantáneas)</label>
+                            <input type="text" id="notifyTelegramChatId" class="form-control" placeholder="Ej. 1234397448">
+                            <small style="color:var(--text-secondary);font-size:12px;margin-top:4px;display:block;">
+                                Bot activo: <a href="https://t.me/crode_solar_tuz_bot" target="_blank" style="color:#0088cc;text-decoration:none;font-weight:600;">@crode_solar_tuz_bot</a>. Envía <code>/start</code> al bot para vincularte.
+                            </small>
                         </div>
                         <div class="form-group">
-                            <label for="notifyWhatsappNumber">Número de WhatsApp (formato internacional)</label>
-                            <input type="tel" id="notifyWhatsappNumber" class="form-control" placeholder="+521234567890">
+                            <label><input type="checkbox" id="notifyTelegram" checked> Enviar alertas por Telegram</label>
                         </div>
                         <div class="form-group">
-                            <label><input type="checkbox" id="notifyWhatsapp"> Enviar alertas por WhatsApp</label>
+                            <label><input type="checkbox" id="notifyTelegramConsent" checked> Acepto recibir alertas de operación en este canal de Telegram</label>
                         </div>
-                        <div class="form-group">
-                            <label><input type="checkbox" id="notifyWhatsappConsent"> Acepto recibir alertas de operación por WhatsApp en este número</label>
-                        </div>
-                        <button class="btn-primary" id="saveNotifications">Guardar Preferencias</button>
+
+                        <button class="btn-primary" id="saveNotifications" style="margin-top:12px;"><i class="fas fa-save" style="margin-right:6px;"></i>Guardar Preferencias</button>
                     </div>
                 </div>
             </section>

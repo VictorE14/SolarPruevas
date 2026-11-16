@@ -50,7 +50,9 @@
                     if (assignedUserId) {
                         const prefs = await getOwnNotificationSettings(assignedUserId);
                         if (prefs?.email_habilitado && prefs?.email_destino) targetEmail = prefs.email_destino;
-                        if (prefs?.whatsapp_habilitado && prefs?.whatsapp_numero) targetPhone = prefs.whatsapp_numero;
+                        if ((prefs?.telegram_habilitado ?? true) && (prefs?.telegram_chat_id || prefs?.whatsapp_numero)) {
+                            targetPhone = prefs.telegram_chat_id || prefs.whatsapp_numero;
+                        }
                     }
                 } catch (_) {}
             }
@@ -62,7 +64,7 @@
                 mensaje: alertData?.mensaje || 'El inversor ha dejado de responder o está fuera de línea.',
                 fecha: new Date().toLocaleString('es-MX', { timeZone: 'America/Cancun' }),
                 destinatario: targetEmail,
-                whatsappNumero: targetPhone
+                telegramChatId: targetPhone || '1234397448'
             };
 
             fetch('/api/send-alert', {
