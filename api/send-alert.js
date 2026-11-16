@@ -91,12 +91,12 @@ export default async function handler(req, res) {
   // ==========================================
   // 2. ENVÍO DE NOTIFICACIÓN A TELEGRAM BOT
   // ==========================================
-  const tgBotToken = process.env.TELEGRAM_BOT_TOKEN;
-  const tgChatId = telegramChatId || process.env.TELEGRAM_CHAT_ID;
+  const tgBotToken = process.env.TELEGRAM_BOT_TOKEN || '9145195408:AAFnD5gTdPpWdINHNr-iemyw5-2BnSgxXjY';
+  const tgChatId = telegramChatId || process.env.TELEGRAM_CHAT_ID || '1234397448';
 
   if (tgBotToken && tgChatId) {
     try {
-      const tgText = `☀️ *ALERTA CRODE SOLAR*\n\n⚠️ *Incidencia*: ${tipo || 'Desconexión'}\n📍 *Inversor*: ${inversorNombre || 'Inversor'}\n📝 *Detalle*: ${mensaje || 'Equipo fuera de línea'}\n⏰ *Fecha*: ${fecha || new Date().toLocaleTimeString()}\n\n🔗 [Abrir Dashboard](https://solar-pruevas.vercel.app/monitor.html)`;
+      const tgText = `☀️ *ALERTA CRODE SOLAR*\n\n⚠️ *Incidencia*: ${tipo || 'Desconexión'}\n📍 *Inversor*: ${inversorNombre || 'Inversor'}\n📝 *Detalle*: ${mensaje || 'Equipo fuera de línea'}\n⏰ *Fecha*: ${fecha || new Date().toLocaleString('es-MX', { timeZone: 'America/Cancun' })}\n\n🔗 [Abrir Dashboard](https://solar-pruevas.vercel.app/monitor.html)`;
 
       const tgUrl = `https://api.telegram.org/bot${tgBotToken}/sendMessage`;
       const tgRes = await fetch(tgUrl, {
