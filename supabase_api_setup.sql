@@ -155,6 +155,9 @@ create table if not exists public.inversores_tecnicos (
 create table if not exists public.preferencias_notificaciones (
     usuario_id uuid not null primary key references public.usuarios(id) on delete cascade,
     email_destino text,
+    telegram_chat_id text,
+    telegram_habilitado boolean not null default false,
+    telegram_consentimiento boolean not null default false,
     whatsapp_numero text,
     email_habilitado boolean default true,
     whatsapp_habilitado boolean default false,
@@ -162,3 +165,8 @@ create table if not exists public.preferencias_notificaciones (
     created_at timestamp with time zone default now(),
     updated_at timestamp with time zone default now()
 );
+
+alter table public.preferencias_notificaciones
+    add column if not exists telegram_chat_id text,
+    add column if not exists telegram_habilitado boolean not null default false,
+    add column if not exists telegram_consentimiento boolean not null default false;
